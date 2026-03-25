@@ -408,6 +408,89 @@ Field notes:
 - **Clash rotation enabled**: additionally complete the `clash_proxy_pool` block and enable Clash external control in your local environment
 - **Inventory maintenance enabled**: additionally complete the full `cpa_mode` block
 
+## Running Mihomo / Clash on a server
+
+If you want to use Clash-based node rotation on a server, you can run Mihomo (Clash Meta compatible core) in the background and expose both a local mixed proxy port and the External Controller API.
+
+### 1. Prepare a working directory
+
+```bash
+mkdir -p /opt/clash && cd /opt/clash
+```
+
+### 2. Download the Mihomo binary
+
+Example for Linux x86_64:
+
+```bash
+wget https://github.com/MetaCubeX/mihomo/releases/download/v1.18.1/mihomo-linux-amd64-v1.18.1.gz
+gzip -d mihomo-linux-amd64-v1.18.1.gz
+mv mihomo-linux-amd64-v1.18.1 mihomo
+chmod +x mihomo
+```
+
+If you use another CPU architecture, download the matching release from the Mihomo releases page.
+
+### 3. Download your subscription-derived config
+
+Use a Clash-compatible subscription conversion link and request a Clash-style config. The following example uses `-U "Clash-meta"` so the upstream returns the expected format:
+
+```bash
+wget -U "Clash-meta" -O /opt/clash/config.yaml 'YOUR_SUBSCRIPTION_CONVERTER_URL'
+```
+
+### 4. Check the generated ports in `config.yaml`
+
+After downloading the config, inspect the following fields inside `/opt/clash/config.yaml`:
+
+- `mixed-port`: the local proxy port used by this project, typically mapped to `default_proxy` and `clash_proxy_pool.test_proxy_url`
+- `external-controller`: the controller address used by `clash_proxy_pool.api_url`
+- `secret`: if present, copy it into `clash_proxy_pool.secret`
+
+For example, if your Mihomo config contains:
+
+```yaml
+mixed-port: 7897
+external-controller: 127.0.0.1:9097
+secret: your-secret
+```
+
+Then your project config should normally match that setup:
+
+```yaml
+default_proxy: "http://127.0.0.1:7897"
+
+clash_proxy_pool:
+  enable: true
+  api_url: "http://127.0.0.1:9097"
+  secret: "your-secret"
+  test_proxy_url: "http://127.0.0.1:7897"
+```
+
+### 5. Start Mihomo in the background
+
+```bash
+nohup ./mihomo -d /opt/clash > clash.log 2>&1 &
+```
+
+This starts Mihomo in the background and writes logs to `clash.log`.
+
+### 6. Stop Mihomo
+
+```bash
+pkill mihomo
+```
+
+### 7. Recommended checks
+
+Before enabling automatic node rotation in this project, confirm the following:
+
+- Mihomo is running normally in the background
+- the local mixed proxy port is reachable
+- the External Controller API is reachable from the same machine
+- the configured proxy group in `clash_proxy_pool.group_name` actually exists in your Clash config
+- the controller `secret`, if enabled, matches the one in Mihomo's config
+
 ## Usage
 
 Run normally:
