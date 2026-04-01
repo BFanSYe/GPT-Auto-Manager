@@ -98,7 +98,7 @@ A Python utility that provides multi-backend mailbox support, multi-domain rotat
 Install required packages:
 
 ```bash
-pip install curl_cffi requests PyYAML PySocks fastapi uvicorn pydantic cloudflare
+pip install curl_cffi requests PyYAML PySocks fastapi uvicorn[standard] pydantic cloudflare
 ```
 
 ## Configuration
