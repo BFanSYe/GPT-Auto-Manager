@@ -19,10 +19,14 @@ It also supports **random multi-level subdomain generation**, designed to work t
 > Use only in systems and environments you own or are explicitly authorized to test.
 > Make sure your use complies with applicable laws, platform rules, and service terms.
 
-## Environment Setup
-Install Python Dependencies Install the required base libraries using the requirements.txt file in the root directory:
 
-Required: Python 3.12.6 or Python 3.12
+## Environment Setup
+[!IMPORTANT]
+Supported OS: Windows (Python 3.12.6 or Python 3.12) and Linux/Docker.
+﻿
+Note: macOS is currently NOT natively supported due to binary dependencies (.pyd and .so files).
+
+Install Python Dependencies Install the required base libraries using the requirements.txt file in the root directory:
 
 ```bash
 pip install -r requirements.txt
