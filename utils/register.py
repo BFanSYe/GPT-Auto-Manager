@@ -17,6 +17,30 @@ from utils.sentinel import get_token, clear_cache
 from utils import config as cfg
 from utils.mail_service import get_email_and_token, get_oai_code, mask_email
 from utils.hero_sms import _try_verify_phone_via_hero_sms
+from playwright.sync_api import BrowserType
+
+_original_launch = BrowserType.launch
+
+def _patched_launch(self, *args, **kwargs):
+    proxy_cfg = kwargs.get("proxy")
+    if proxy_cfg and isinstance(proxy_cfg, dict):
+        server = proxy_cfg.get("server", "")
+        if "@" in server:
+            parsed = urllib.parse.urlparse(server)
+            new_proxy = {
+                "server": f"http://{parsed.hostname}:{parsed.port}"
+            }
+            if parsed.username and parsed.password:
+                new_proxy["username"] = urllib.parse.unquote(parsed.username)
+                new_proxy["password"] = urllib.parse.unquote(parsed.password)
+
+            kwargs["proxy"] = new_proxy
+    args_list = kwargs.get("args", [])
+    if "--disable-dev-shm-usage" not in args_list:
+        args_list.append("--disable-dev-shm-usage")
+    kwargs["args"] = args_list
+BrowserType.launch = _patched_launch
+
 
 AUTH_URL             = "https://auth.openai.com/oauth/authorize"
 TOKEN_URL            = "https://auth.openai.com/oauth/token"
