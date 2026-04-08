@@ -22,7 +22,8 @@ def init_db():
                 email TEXT UNIQUE,
                 password TEXT,
                 token_data TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ''')
         c.execute('''

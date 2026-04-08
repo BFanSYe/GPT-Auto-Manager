@@ -528,9 +528,12 @@ def handle_registration_result(result: Any, cpa_upload: bool = False, run_ctx: d
             else:
                 print(f"[{ts()}] [ERROR] 云端上传失败: {up_msg}")
 
+        masked_email = mask_email(account_email)
+        safe_pwd = str(password) if password else ""
+        masked_password = f"{safe_pwd[:2]}****{safe_pwd[-2:]}" if len(safe_pwd) > 4 else "****"
         template_str = getattr(cfg, 'TG_BOT', {}).get("template_success", "成功: {email} / {password}")
         try:
-            success_text = template_str.format(email=account_email, password=password)
+            success_text = template_str.format(email=account_email, password=password, masked_email=masked_email, masked_password=masked_password)
         except Exception:
             success_text = f"🎉 注册成功\n账号: {account_email}\n密码: {password}\n(温馨提示: 您的TG单号自定义模板配置有误)"
 

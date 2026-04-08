@@ -258,6 +258,7 @@
                                             <th class="px-4 md:px-6 py-3 md:py-4 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider w-12 md:w-16">#</th>
                                             <th class="px-4 md:px-6 py-3 md:py-4 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider min-w-[150px]">邮箱账号</th>
                                             <th class="px-4 md:px-6 py-3 md:py-4 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">登录密码</th>
+                                            <th class="px-4 md:px-6 py-3 md:py-4 text-left text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider min-w-[120px]">入库时间</th>
                                             <th class="px-4 md:px-6 py-3 md:py-4 text-center text-[10px] md:text-xs font-bold text-gray-500 uppercase tracking-wider min-w-[160px]">操作</th>
                                         </tr>
                                     </thead>
@@ -273,6 +274,9 @@
                                             </td>
                                             <td class="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs md:text-sm text-gray-500 font-mono bg-white rounded px-2 border">
                                                 {{ showAccountsPlaintext ? acc.password : '••••••••' }}
+                                            </td>
+                                            <td class="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-xs md:text-sm text-gray-500 font-mono bg-white rounded px-2 border">
+                                            {{ formatTime(acc.created_at) }}
                                             </td>
                                             <td class="px-4 md:px-6 py-3 md:py-4 whitespace-nowrap text-center text-xs md:text-sm font-medium flex gap-1 justify-center">
                                                 <button @click="triggerAccountAction(acc, 'push')" class="text-green-700 bg-green-100 hover:bg-green-200 px-2 py-1 md:px-3 rounded-md transition font-bold shadow-sm">推CPA</button>
@@ -1287,7 +1291,7 @@
                                             <label class="form-label text-blue-800 text-xs md:text-sm font-bold">🎉 单号产出通知模板</label>
                                             <textarea v-model="config.tg_bot.template_success" class="form-input mb-0 text-xs font-mono h-20 md:h-24 border-blue-200" placeholder="填入单号成功模板"></textarea>
                                             <p class="text-[10px] text-blue-500 mt-1.5 leading-relaxed">
-                                                可用变量: <code>{email}</code> 账号, <code>{password}</code> 密码。<br>支持 HTML 标签如 <code>&lt;b&gt;加粗&lt;/b&gt;</code>, <code>&lt;code&gt;复制块&lt;/code&gt;</code>。
+                                                可用变量: <code>{email}</code> 邮箱, <code>{password}</code> 密码, <code class="text-red-400">{masked_email}</code> 脱敏邮箱, <code class="text-red-400">{masked_password}</code> 脱敏密码。
                                             </p>
                                         </div>
                                         <div class="mt-2">
