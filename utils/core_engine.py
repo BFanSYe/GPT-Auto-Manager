@@ -24,15 +24,15 @@ from typing import Any, Optional, Tuple
 from curl_cffi import requests, CurlMime
 import queue
 from datetime import datetime, timezone, timedelta
-from utils import mail_service
+from utils.email_providers import mail_service
 from utils import config as cfg
 from utils import db_manager
 from utils.config import reload_all_configs, ts, format_docker_url
-from utils.mail_service import mask_email
+from utils.email_providers.mail_service import mask_email
 from utils.register import run, refresh_oauth_token as _refresh_oauth_token
 from utils.proxy_manager import smart_switch_node
-from utils.sub2api_client import Sub2APIClient
-from utils.tg_notifier import send_tg_msg_sync
+from utils.integrations.sub2api_client import Sub2APIClient
+from utils.integrations.tg_notifier import send_tg_msg_sync
 
 _stats_lock = threading.Lock()
 sub_fail_counts = {}
@@ -55,7 +55,7 @@ KNOWN_CLIPROXY_ERROR_LABELS = {
     "unsupported_region":   "地区不支持",
 }
 
-log_queue = queue.Queue(maxsize=1500)
+log_queue = queue.Queue(maxsize=500)
 _orig_print  = builtins.print
 _thread_local = threading.local()
 _print_lock   = threading.Lock()
@@ -304,6 +304,7 @@ def test_cliproxy_auth_file(item: dict, api_url: str, api_token: str) -> Tuple[b
         if resp.status_code != 200:
             return False, f"HTTP {resp.status_code}"
         data        = resp.json()
+        item['_raw_usage'] = data
         status_code = data.get("status_code", 0)
         reason      = _extract_cliproxy_failure_reason(data, cfg.MIN_REMAINING_WEEKLY_PERCENT)
         if status_code >= 400 or reason:
@@ -528,9 +529,8 @@ def handle_registration_result(result: Any, cpa_upload: bool = False, run_ctx: d
             else:
                 print(f"[{ts()}] [ERROR] 云端上传失败: {up_msg}")
 
-        masked_email = mask_email(account_email)
         safe_pwd = str(password) if password else ""
-        orig_masked_email = mask_email(account_email)
+        orig_masked_email = mail_service.mask_email(account_email, force_mask=True)
         orig_masked_password = f"{safe_pwd[:2]}****{safe_pwd[-2:]}" if len(safe_pwd) > 4 else "****"
 
         final_email = orig_masked_email if getattr(cfg, 'TG_BOT', {}).get("mask_email", False) else account_email
@@ -540,7 +540,7 @@ def handle_registration_result(result: Any, cpa_upload: bool = False, run_ctx: d
         beijing_tz = timezone(timedelta(hours=8))
         current_time = datetime.now(beijing_tz).strftime("%Y-%m-%d %H:%M:%S")
         try:
-            success_text = template_str.format(email=account_email, password=safe_pwd, time=current_time)
+            success_text = template_str.format(email=final_email, password=final_password, time=current_time)
         except Exception:
             success_text = f"🎉 注册成功\n账号: {final_email}\n密码: {final_password}\n时间: {current_time}\n(温馨提示: 您的TG单号自定义模板配置有误)"
 
@@ -559,7 +559,7 @@ def run_and_refresh(proxy, args, cpa_upload=False, skip_switch=False):
     try:
         result = run(proxy, run_ctx=run_ctx)
     except Exception as e:
-        print(f"[{ts()}] [ERROR] 注册线程发生未捕获异常")
+        print(f"[{ts()}] [ERROR] 注册线程发生未捕获异常{e}")
 
     return handle_registration_result(result, cpa_upload=cpa_upload, run_ctx=run_ctx)
 

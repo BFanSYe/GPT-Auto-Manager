@@ -190,6 +190,10 @@ AI_MODEL: str = "gpt-3.5-turbo"
 AI_ENABLE_PROFILE: bool = False
 TG_BOT: dict = {"enable": False, "token": "", "chat_id": ""}
 
+CLUSTER_NODE_NAME: str = ""
+CLUSTER_MASTER_URL: str = ""
+CLUSTER_SECRET: str = "wenfxl666"
+
 def reload_all_configs():
     global _c
     global EMAIL_API_MODE, MAIL_DOMAINS, GPTMAIL_BASE, ADMIN_AUTH
@@ -225,6 +229,9 @@ def reload_all_configs():
     global DUCKMAIL_API_URL, DUCKMAIL_DOMAIN, DUCKMAIL_MODE, DUCK_API_TOKEN, DUCK_COOKIE, DUCK_OFFICIAL_API_BASE
     global DUCKMAIL_FORWARD_MODE, DUCKMAIL_FORWARD_EMAIL
     global DUCK_USE_PROXY
+    global CLUSTER_NODE_NAME, CLUSTER_MASTER_URL, CLUSTER_SECRET
+
+
     def safe_int(value, default, minimum=None):
         try:
             parsed = int(str(value).strip())
@@ -475,6 +482,10 @@ def reload_all_configs():
     DUCKMAIL_FORWARD_MODE = str(_duck.get("forward_mode") or "Gmail_OAuth").strip()
     DUCKMAIL_FORWARD_EMAIL = str(_duck.get("forward_email") or "").strip()
     DUCK_USE_PROXY = safe_bool(_duck.get("use_proxy", True), default=True)
+
+    CLUSTER_NODE_NAME = str(_c.get("cluster_node_name", "")).strip()
+    CLUSTER_MASTER_URL = str(_c.get("cluster_master_url", "")).strip().rstrip("/")
+    CLUSTER_SECRET = str(_c.get("cluster_secret", "wenfxl666")).strip()
 
     reload_proxy_config()
     print(f"[{ts()}] [系统] 核心配置已完成同步。")

@@ -15,8 +15,8 @@ from typing import Any, Dict, Optional, Tuple
 
 from curl_cffi import requests
 from utils import config as cfg
-from utils.mail_service import get_email_and_token, get_oai_code, mask_email
-from utils.hero_sms import _try_verify_phone_via_hero_sms
+from utils.email_providers.mail_service import get_email_and_token, get_oai_code, mask_email
+from utils.integrations.hero_sms import _try_verify_phone_via_hero_sms
 from utils.auth_core import generate_payload
 
 AUTH_URL = "https://auth.openai.com/oauth/authorize"
@@ -435,17 +435,17 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         s_reg.get(oauth_reg.auth_url, proxies=proxies, verify=_ssl_verify(), timeout=15)
         did = s_reg.cookies.get("oai-did") or ""
         if not did:
-            print(f"[{cfg.ts()}] [WARNING] 未获取到 oai-did，节点环境可能被关注。")
+            print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）未获取到 oai-did，节点环境可能被关注。")
 
         current_ua = s_reg.headers.get("User-Agent")
 
         reg_ctx = {}
 
-        print(f"[{cfg.ts()}] [INFO] 正在计算风控算力挑战...")
+        print(f"[{cfg.ts()}] [INFO] 正在计算（{mask_email(email)}）风控算力挑战...")
         sentinel_signup = generate_payload(did=did, flow="authorize_continue", proxy=proxy, user_agent=current_ua,
                                            impersonate="chrome110", ctx=reg_ctx)
         if sentinel_signup:
-            print(f"[{cfg.ts()}] [SUCCESS] 算力挑战成功。")
+            print(f"[{cfg.ts()}] [SUCCESS] （{mask_email(email)}）算力挑战成功。")
         signup_headers = _oai_headers(did, {
             "Referer": "https://auth.openai.com/create-account",
             "content-type": "application/json",
@@ -462,10 +462,10 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         )
 
         if signup_resp.status_code == 403:
-            print(f"[{cfg.ts()}] [WARNING] 注册请求触发 403 拦截，稍作等待后重试...")
+            print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）注册请求触发 403 拦截，稍作等待后重试...")
             return "retry_403", None
         if signup_resp.status_code != 200:
-            print(f"[{cfg.ts()}] [ERROR] 提交邮箱环节异常, 返回: {signup_resp.status_code}")
+            print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）提交邮箱环节异常, 返回: {signup_resp.status_code}")
             return None, None
 
         sentinel_pwd = generate_payload(did=did, flow="username_password_create", proxy=proxy, user_agent=current_ua,
@@ -486,7 +486,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         )
 
         if pwd_resp.status_code != 200:
-            print(f"[{cfg.ts()}] [ERROR] 设密码环节被拦截，返回: {pwd_resp.status_code}，该提示可忽略，不影响后面执行流程")
+            print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）设密码环节被拦截，返回: {pwd_resp.status_code}，该提示可忽略，不影响后面执行流程")
             if run_ctx is not None: run_ctx['pwd_blocked'] = True
             return None, None
 
@@ -509,7 +509,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                         proxies=proxies if getattr(cfg, 'USE_PROXY_FOR_EMAIL', True) else None
                     )
                     if not lm_service.check_token_alive(email_jwt):
-                        print(f"[{cfg.ts()}] [ERROR] 邮箱 已失效，放弃当前注册并重试！")
+                        print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）邮箱 已失效，放弃当前注册并重试！")
                         return None, None
                 except Exception as e:
                     print(f"[{cfg.ts()}] [WARNING] LuckMail 可用性检测异常(忽略并继续): {e}")
@@ -534,7 +534,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                     json_body={}, proxies=proxies, timeout=30,
                 )
             except Exception as e:
-                print(f"[{cfg.ts()}] [WARNING] OTP 初始发送请求异常: {e}")
+                print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）OTP 初始发送请求异常: {e}")
 
             code = ""
             for resend_attempt in range(max(1, cfg.MAX_OTP_RETRIES)):
@@ -559,7 +559,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                         )
                         time.sleep(2)
                     except Exception as e:
-                        print(f"[{cfg.ts()}] [WARNING] 重新发送请求异常: {e}")
+                        print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）重新发送请求异常: {e}")
 
                 code = get_oai_code(email, jwt=email_jwt, proxies=proxies,
                                     processed_mail_ids=processed_mails)
@@ -586,11 +586,11 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                 json_body={"code": code}, proxies=proxies,
             )
             if code_resp.status_code != 200:
-                print(f"[{cfg.ts()}] [ERROR] 验证码校验未通过: {code_resp.text}")
+                print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）验证码校验未通过: {code_resp.status_code}")
                 return None, None
 
         user_info = generate_random_user_info()
-        print(f"[{cfg.ts()}] [INFO] 初始化账户信息 "
+        print(f"[{cfg.ts()}] [INFO] （{mask_email(email)}）初始化账户信息 "
               f"(昵称: {user_info['name']}, 生日: {user_info['birthdate']})...")
 
         sentinel_create = generate_payload(did=did, flow="create_account", proxy=proxy, user_agent=current_ua,
@@ -611,7 +611,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         )
 
         if create_account_resp.status_code != 200:
-            print(f"[{cfg.ts()}] [ERROR] 账户创建受阻，返回: {create_account_resp.status_code}，该提示可忽略，不影响后面执行流程")
+            print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）账户创建受阻，返回: {create_account_resp.status_code}，该提示可忽略，不影响后面执行流程")
             return None, None
 
         try:
@@ -621,7 +621,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
             create_continue = ""
 
         wait_time = random.randint(cfg.LOGIN_DELAY_MIN, cfg.LOGIN_DELAY_MAX)
-        print(f"[{cfg.ts()}] [INFO] 注册通过，等待 {wait_time} 秒后同步最终状态...")
+        print(f"[{cfg.ts()}] [INFO] （{mask_email(email)}）注册通过，等待 {wait_time} 秒后同步最终状态...")
         time.sleep(wait_time)
 
         workspace_hint_url = ""
@@ -646,7 +646,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         workspaces = _parse_workspace_from_auth_cookie(auth_cookie)
 
         if workspaces:
-            print(f"[{cfg.ts()}] [SUCCESS] 检测到工作区，正在确认并提取最终凭据...")
+            print(f"[{cfg.ts()}] [SUCCESS] （{mask_email(email)}）检测到工作区，正在确认并提取最终凭据...")
             workspace_id = str((workspaces[0] or {}).get("id") or "").strip()
 
             if workspace_id:
@@ -668,14 +668,14 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                     if next_url:
                         _, final_url = _follow_redirect_chain_local(s_reg, next_url, proxies)
                         if "code=" in final_url and "state=" in final_url:
-                            print(f"[{cfg.ts()}] [SUCCESS] 凭据提取成功！一气呵成！")
+                            print(f"[{cfg.ts()}] [SUCCESS] （{mask_email(email)}）凭据提取成功！一气呵成！")
                             return submit_callback_url(
                                 callback_url=final_url,
                                 expected_state=oauth_reg.state,
                                 code_verifier=oauth_reg.code_verifier,
                                 proxies=proxies,
                             ), password
-        print(f"[{cfg.ts()}] [INFO] 基础信息建立完毕，执行静默获取 Token...")
+        print(f"[{cfg.ts()}] [INFO] （{mask_email(email)}）基础信息建立完毕，执行静默获取 Token...")
         s_log = requests.Session(proxies=proxies, impersonate="chrome110")
         oauth_log = generate_oauth_url()
 
@@ -715,7 +715,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         )
 
         if login_start_resp.status_code != 200:
-            print(f"[{cfg.ts()}] [ERROR] 登录环节第一步请求被拒: HTTP {login_start_resp.status_code}")
+            print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）登录环节第一步请求被拒: HTTP {login_start_resp.status_code}")
             return None, None
 
         pwd_page_url = str(
@@ -743,7 +743,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         )
 
         if pwd_login_resp.status_code != 200:
-            print(f"[{cfg.ts()}] [ERROR] 最终静默登录验证失败: HTTP {pwd_login_resp.status_code}")
+            print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）最终静默登录验证失败: HTTP {pwd_login_resp.status_code}")
             return None, None
 
         pwd_json = pwd_login_resp.json()
@@ -760,12 +760,12 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                         proxies=proxies if getattr(cfg, 'USE_PROXY_FOR_EMAIL', True) else None
                     )
                     if not lm_service.check_token_alive(email_jwt):
-                        print(f"[{cfg.ts()}] [ERROR] 邮箱 已失效，放弃当前注册并重试！")
+                        print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）邮箱 已失效，放弃当前注册并重试！")
                         return None, None
                 except Exception as e:
                     print(f"[{cfg.ts()}] [WARNING] LuckMail 可用性检测异常(忽略并继续): {e}")
 
-            print(f"\n[{cfg.ts()}] [INFO] 静默登录需要验证码，主动触发发送...")
+            print(f"\n[{cfg.ts()}] [INFO] （{mask_email(email)}）静默登录需要验证码，主动触发发送...")
 
             try:
                 sentinel_log_send = generate_payload(did=log_did, flow="authorize_continue", proxy=proxy,
@@ -784,13 +784,13 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                     json_body={}, proxies=proxies, timeout=30,
                 )
             except Exception as e:
-                print(f"[{cfg.ts()}] [WARNING] 登录 OTP 发送请求异常: {e}")
+                print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）登录 OTP 发送请求异常: {e}")
 
             code2 = ""
             for resend_attempt in range(max(1, cfg.MAX_OTP_RETRIES)):
                 if getattr(cfg, 'GLOBAL_STOP', False): return None, None
                 if resend_attempt > 0:
-                    print(f"\n[{cfg.ts()}] [INFO] 正在重试 {resend_attempt}/{cfg.MAX_OTP_RETRIES}...")
+                    print(f"\n[{cfg.ts()}] [INFO] （{mask_email(email)}）正在重试 {resend_attempt}/{cfg.MAX_OTP_RETRIES}...")
                     try:
                         sentinel_log_resend = generate_payload(did=log_did, flow="authorize_continue", proxy=proxy,
                                                                user_agent=current_ua, impersonate="chrome110",
@@ -809,7 +809,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                         )
                         time.sleep(2)
                     except Exception as e:
-                        print(f"[{cfg.ts()}] [WARNING] 重新发送请求异常: {e}")
+                        print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）重新发送请求异常: {e}")
 
                 code2 = get_oai_code(email, jwt=email_jwt, proxies=proxies,
                                      processed_mail_ids=processed_mails)
@@ -817,7 +817,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                     break
 
             if not code2:
-                print(f"[{cfg.ts()}] [ERROR] 重新发送后依然未收到验证码，彻底放弃。")
+                print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）重新发送后依然未收到验证码，彻底放弃。")
                 return None, None
 
             sentinel_otp2 = generate_payload(did=log_did, flow="authorize_continue", proxy=proxy, user_agent=current_ua,
@@ -836,7 +836,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                 json_body={"code": code2}, proxies=proxies,
             )
             if code2_resp.status_code != 200:
-                print(f"[{cfg.ts()}] [ERROR] 二次安全验证 OTP 校验失败: {code2_resp.text}")
+                print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）二次安全验证 OTP 校验失败: {code2_resp.status_code}")
                 return None, None
 
             next_url = str(code2_resp.json().get("continue_url") or "").strip()
@@ -877,7 +877,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                         proxies=proxies,
                     ), password
         if "/add-phone" in current_url:
-            print(f"[{cfg.ts()}] [INFO] OAuth链路触发风控，进入 HeroSMS 手机号验证流程...")
+            print(f"[{cfg.ts()}] [INFO] （{mask_email(email)}） OAuth链路触发风控，进入 HeroSMS 手机号验证流程...")
 
             ok, next_url_or_reason = _try_verify_phone_via_hero_sms(
                 session=s_log,
@@ -886,7 +886,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
             )
 
             if ok and next_url_or_reason:
-                print(f"[{cfg.ts()}] [INFO] 手机验证成功，继续 OAuth 链路: {next_url_or_reason}")
+                print(f"[{cfg.ts()}] [INFO] （{mask_email(email)}） 手机验证成功，继续 OAuth 链路: {next_url_or_reason}")
 
                 if "code=" in next_url_or_reason:
                     return submit_callback_url(
@@ -922,13 +922,13 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
                                 proxies=proxies,
                             ), password
             else:
-                print(f"[{cfg.ts()}] [ERROR] 手机号接码验证彻底失败: {next_url_or_reason}")
+                print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}） 手机号接码验证彻底失败: {next_url_or_reason}")
         if run_ctx is not None: run_ctx['phone_verify'] = True
-        print(f"[{cfg.ts()}] [ERROR] OAuth 授权链路追踪失败！当前死在网页: {current_url}")
+        print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}） OAuth 授权链路追踪失败！当前死在网页: {current_url}")
         return None, None
 
     except Exception as e:
-        print(f"[{cfg.ts()}] [ERROR] 注册主流程发生严重异常: {e}")
+        print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}） 注册主流程发生严重异常: {e}")
         return None, None
 
 

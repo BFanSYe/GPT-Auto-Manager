@@ -1,7 +1,8 @@
 fastapi 
 uvicorn[standard] 
 PyYAML 
-pydantic 
+pydantic
+websockets
 requests
 httpx[socks]
 curl_cffi 

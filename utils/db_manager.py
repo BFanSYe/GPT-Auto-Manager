@@ -151,3 +151,32 @@ def get_sys_kv(key: str, default=None):
     except Exception:
         pass
     return default
+
+
+def get_all_accounts_with_token(limit: int = 10000) -> list:
+    """提取包含完整 token_data 的账号列表，专门用于集群导出"""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            c = conn.cursor()
+            c.execute("SELECT email, password, token_data FROM accounts ORDER BY id DESC LIMIT ?", (limit,))
+            rows = c.fetchall()
+
+            return [{"email": r[0], "password": r[1], "token_data": r[2]} for r in rows]
+    except Exception as e:
+        print(f"[{ts()}] [ERROR] 提取完整账号数据失败: {e}")
+        return []
+
+def save_account_to_db(email: str, password: str, token_json_str: str) -> bool:
+    """账号、密码和 Token 数据存入数据库"""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            c = conn.cursor()
+            c.execute('''
+                INSERT OR IGNORE INTO accounts (email, password, token_data)
+                VALUES (?, ?, ?)
+            ''', (email, password, token_json_str))
+            conn.commit()
+            return True
+    except Exception as e:
+        print(f"[{ts()}] [ERROR] 数据库保存失败: {e}")
+        return False

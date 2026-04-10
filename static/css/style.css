@@ -16,3 +16,5 @@ body { background-color: #f3f4f6; }
 .toast-leave-to { opacity: 0; transform: translateX(100%) scale(0.9); }
 .progress-bar-inner { transition: width 0.5s ease-in-out; }
 [v-cloak] { display: none !important; }
+.fake-password-mask {-webkit-text-security: disc !important;text-security: disc !important;}
+.mask-text {-webkit-text-security: disc !important;text-security: disc !important;}
