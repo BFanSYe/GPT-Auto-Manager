@@ -57,6 +57,8 @@ createApp({
             clashPoolSubUrl: '',
             clashPoolStatusOutput: '',
             clashPoolInfo: null,
+            clashPoolGroups: [],
+            clashPoolGroupError: '',
             isClashPoolUpdating: false,
             accounts: [],
             selectedAccounts: [],
@@ -322,6 +324,8 @@ createApp({
                     this.clashPoolInfo = data.data || {};
                     this.clashPoolSubUrl = (data.data && data.data.sub_url) ? data.data.sub_url : '';
                     this.clashPoolStatusOutput = (data.data && data.data.status_output) ? data.data.status_output : '';
+                    this.clashPoolGroups = (data.data && Array.isArray(data.data.group_candidates)) ? data.data.group_candidates : [];
+                    this.clashPoolGroupError = (data.data && data.data.group_error) ? data.data.group_error : '';
                 } else {
                     this.showToast(data.message || '读取 Clash 订阅信息失败', 'warning');
                 }
@@ -350,10 +354,14 @@ createApp({
                         this.clashPoolInfo.sub_url = subUrl;
                         this.clashPoolInfo.status_output = this.clashPoolStatusOutput;
                     }
+                    this.clashPoolGroups = Array.isArray(data.group_candidates) ? data.group_candidates : this.clashPoolGroups;
+                    this.clashPoolGroupError = data.group_error || '';
                     this.showToast(data.message || 'Clash 订阅更新成功', 'success');
                     await this.fetchClashPoolInfo();
                 } else {
                     this.clashPoolStatusOutput = data.output || data.status_output || this.clashPoolStatusOutput;
+                    this.clashPoolGroups = Array.isArray(data.group_candidates) ? data.group_candidates : this.clashPoolGroups;
+                    this.clashPoolGroupError = data.group_error || '';
                     this.showToast(data.message || 'Clash 订阅更新失败', 'error');
                 }
             } catch (e) {
@@ -361,6 +369,11 @@ createApp({
             } finally {
                 this.isClashPoolUpdating = false;
             }
+        },
+        useClashGroupName(name) {
+            if (!this.config || !this.config.clash_proxy_pool) return;
+            this.config.clash_proxy_pool.group_name = name || '';
+            this.showToast(`已填入策略组：${name}`, 'success');
         },
         async saveConfig() {
             try {

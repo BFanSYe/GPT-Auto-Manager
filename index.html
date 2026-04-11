@@ -1369,6 +1369,33 @@
                                         <label class="block text-slate-700 text-xs font-extrabold mb-2 uppercase tracking-wider">代理池状态 / 更新输出</label>
                                         <textarea readonly :value="clashPoolStatusOutput || '暂无状态输出'" class="w-full appearance-none bg-slate-950 border border-slate-800 text-emerald-300 rounded-xl py-3 px-4 focus:outline-none shadow-inner h-[180px] font-mono text-xs leading-relaxed"></textarea>
                                     </div>
+
+                                    <div>
+                                        <div class="flex items-center justify-between mb-2 gap-3">
+                                            <label class="block text-slate-700 text-xs font-extrabold uppercase tracking-wider">当前订阅实际策略组</label>
+                                            <span class="text-[11px] text-slate-400 font-medium">点“填入”可直接写到下方 Clash 策略组名称</span>
+                                        </div>
+                                        <div v-if="clashPoolGroupError" class="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-3 font-medium">
+                                            {{ clashPoolGroupError }}
+                                        </div>
+                                        <div v-if="clashPoolGroups.length > 0" class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            <div v-for="item in clashPoolGroups" :key="item.name" class="bg-white border border-cyan-100 rounded-xl px-4 py-3 shadow-sm flex flex-col gap-2">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <span class="font-black text-slate-800 break-all">{{ item.name }}</span>
+                                                    <button @click="useClashGroupName(item.name)" class="shrink-0 px-3 py-1.5 bg-cyan-50 border border-cyan-200 text-cyan-700 rounded-lg hover:bg-cyan-500 hover:text-white hover:border-cyan-500 transition-all text-xs font-black">
+                                                        填入
+                                                    </button>
+                                                </div>
+                                                <div class="text-[11px] text-slate-500 font-medium">
+                                                    节点数：<code class="font-mono">{{ item.node_count }}</code>
+                                                    <span v-if="item.current"> · 当前出口：<code class="font-mono">{{ item.current }}</code></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div v-else class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 font-medium">
+                                            暂未读取到策略组，请先点击“刷新状态”或“一键更新订阅”。
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 

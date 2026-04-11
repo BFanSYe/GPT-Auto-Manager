@@ -149,6 +149,38 @@ def _get_clash_pool_status_output() -> str:
     except Exception as e:
         return f"状态读取失败: {e}"
 
+
+def _get_clash_pool_group_candidates(env_map: dict | None = None) -> tuple[list[dict], str]:
+    try:
+        env_map = env_map or _read_clash_pool_env()
+        secret = str(env_map.get("SECRET") or "").strip()
+        count = int(env_map.get("COUNT") or 1)
+        api_port = 42001 if count > 0 else 42001
+        url = f"http://host.docker.internal:{api_port}/proxies"
+        headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+        resp = httpx.get(url, headers=headers, timeout=15.0)
+        if resp.status_code != 200:
+            return [], f"读取 Clash API 失败: HTTP {resp.status_code}"
+        data = resp.json()
+        proxies = data.get("proxies") or {}
+        groups = []
+        for name, meta in proxies.items():
+            if not isinstance(meta, dict):
+                continue
+            all_items = meta.get("all")
+            now_name = meta.get("now")
+            if not isinstance(all_items, list):
+                continue
+            groups.append({
+                "name": str(name),
+                "current": str(now_name or ""),
+                "node_count": len(all_items),
+            })
+        groups.sort(key=lambda x: (-int(x.get("node_count") or 0), x.get("name") or ""))
+        return groups, ""
+    except Exception as e:
+        return [], f"读取策略组失败: {e}"
+
 def parse_cpa_usage_to_details(raw_usage: dict) -> dict:
     details = {"is_cpa": True}
     try:
@@ -376,6 +408,7 @@ async def save_config(new_config: dict, token: str = Depends(verify_token)):
 def get_clash_pool_info(token: str = Depends(verify_token)):
     try:
         env_map = _read_clash_pool_env()
+        group_candidates, group_error = _get_clash_pool_group_candidates(env_map)
         return {
             "status": "success",
             "data": {
@@ -383,6 +416,8 @@ def get_clash_pool_info(token: str = Depends(verify_token)):
                 "count": env_map.get("COUNT", ""),
                 "image": env_map.get("IMAGE", ""),
                 "status_output": _get_clash_pool_status_output(),
+                "group_candidates": group_candidates,
+                "group_error": group_error,
             }
         }
     except Exception as e:
@@ -405,18 +440,23 @@ def update_clash_pool_subscription(req: ClashPoolUpdateReq, token: str = Depends
         code, output = _run_clash_pool_script(CLASH_POOL_UPDATE_SCRIPT, timeout=420)
         tail_lines = "\n".join((output or "").strip().splitlines()[-80:])
         status_output = _get_clash_pool_status_output()
+        group_candidates, group_error = _get_clash_pool_group_candidates(env_map)
         if code != 0:
             return {
                 "status": "error",
                 "message": f"订阅已写入，但更新脚本执行失败 (exit={code})",
                 "output": tail_lines,
                 "status_output": status_output,
+                "group_candidates": group_candidates,
+                "group_error": group_error,
             }
         return {
             "status": "success",
             "message": "✅ Clash 订阅已更新并重载代理池！",
             "output": tail_lines,
             "status_output": status_output,
+            "group_candidates": group_candidates,
+            "group_error": group_error,
             "data": {
                 "sub_url": sub_url,
                 "count": env_map.get("COUNT", ""),
