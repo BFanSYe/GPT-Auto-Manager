@@ -1,5 +1,46 @@
 ﻿# Wenfxl Codex Manager Web Console
 
+## BFanSYe Custom Branch Notes
+
+This repository includes a maintained custom branch based on upstream `v9.0.4`.
+
+### Custom features added in this fork
+
+- LuckMail imported-mailbox mode:
+  - supports calling your own uploaded LuckMail mailbox pool
+  - supports `specified_email`
+  - uses `order/create` + order-based OTP retrieval
+- HTTP dynamic proxy pool:
+  - supports one or more `http://user:pass@host:port` dynamic gateways
+  - supports multi-thread queue dispatch independent from Clash pool mode
+- HeroSMS stability fixes:
+  - HeroSMS API can be configured to bypass the global registration proxy
+  - balance / prices panel remains available even when registration proxies are unstable
+- Telegram notification fixes:
+  - direct-send mode by default
+  - independent `use_proxy` switch
+  - improved default success / stop templates
+- Clash subscription self-service in Web UI:
+  - update subscription URL from the panel
+  - execute pool refresh script from the panel
+  - display detected proxy groups after refresh
+  - populate Clash strategy group as a dropdown
+
+### Deployment-specific notes for this custom branch
+
+- App path: `/opt/openai-cpa`
+- Clash pool path: `/opt/mihomo-pool`
+- The app container mounts:
+  - `/opt/openai-cpa/data:/app/data`
+  - `/opt/mihomo-pool:/opt/mihomo-pool`
+  - `/var/run/docker.sock:/var/run/docker.sock`
+  - `/usr/bin/docker:/usr/local/bin/docker:ro`
+
+### Suggested long-term branch names
+
+- Release-style branch: `release/bfansye-custom-v9.0.4`
+- Main-style branch: `main-bfansye`
+
 A Python-based registration and inventory management tool that is now centered around a **Web Console workflow** instead of a script-only workflow.
 
 It combines:
