@@ -217,7 +217,7 @@
                                         <div class="font-medium text-sm md:text-base tracking-wide text-slate-400">系统待命，日志将在此打印...</div>
                                     </div>
 
-                                    <div v-for="(log, index) in logs" :key="index"
+                                    <div v-for="(log, index) in logs" :key="log.id"
                                          class="flex items-start gap-2.5 md:gap-4 py-1.5 px-2 md:px-3 rounded-lg hover:bg-slate-800/50 transition-colors group">
 
                                         <template v-if="log.parsed">

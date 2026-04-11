@@ -181,8 +181,7 @@ async def start_task(token: str = Depends(verify_token)):
 
     default_proxy = getattr(core_engine.cfg, 'DEFAULT_PROXY', None)
     args = DummyArgs(proxy=default_proxy if default_proxy else None)
-    core_engine.run_stats.update({"success": 0, "failed": 0, "retries": 0, "start_time": time.time()})
-
+    core_engine.run_stats.update({"success": 0, "failed": 0, "retries": 0, "pwd_blocked": 0, "phone_verify": 0, "start_time": time.time()})
     if getattr(core_engine.cfg, 'ENABLE_CPA_MODE', False):
         core_engine.run_stats["target"] = 0
         engine.start_cpa(args)
@@ -224,7 +223,13 @@ async def stop_task(token: str = Depends(verify_token)):
 async def get_stats(token: str = Depends(verify_token)):
     stats = core_engine.run_stats
     is_running = engine.is_running()
-    elapsed = round(time.time() - stats["start_time"], 1) if (is_running and stats["start_time"] > 0) else 0
+
+    if is_running:
+        elapsed = round(time.time() - stats["start_time"], 1) if stats.get("start_time", 0) > 0 else 0
+        stats["_frozen_elapsed"] = elapsed
+    else:
+        elapsed = stats.get("_frozen_elapsed", 0)
+
     total_attempts = stats["success"] + stats["failed"]
     success_rate = round((stats["success"] / total_attempts * 100), 2) if total_attempts > 0 else 0.0
     avg_time = round(elapsed / stats["success"], 1) if stats["success"] > 0 else 0.0
@@ -585,7 +590,7 @@ def process_cloud_action(req: CloudActionReq, token: str = Depends(verify_token)
 
 @router.get('/api/sms/balance')
 def api_get_sms_balance(token: str = Depends(verify_token)):
-    from utils.hero_sms import hero_sms_get_balance
+    from utils.integrations.hero_sms import hero_sms_get_balance
     proxy_url = core_engine.cfg.DEFAULT_PROXY
     balance, err = hero_sms_get_balance(proxies={"http": proxy_url, "https": proxy_url} if proxy_url else None)
     return {"status": "success", "balance": f"{balance:.2f}"} if balance >= 0 else {"status": "error", "message": err}
@@ -593,7 +598,7 @@ def api_get_sms_balance(token: str = Depends(verify_token)):
 
 @router.post('/api/sms/prices')
 def api_get_sms_prices(req: SMSPriceReq, token: str = Depends(verify_token)):
-    from utils.hero_sms import _hero_sms_prices_by_service
+    from utils.integrations.hero_sms import _hero_sms_prices_by_service
     proxy_url = core_engine.cfg.DEFAULT_PROXY
     rows = _hero_sms_prices_by_service(req.service,
                                        proxies={"http": proxy_url, "https": proxy_url} if proxy_url else None)
@@ -603,7 +608,7 @@ def api_get_sms_prices(req: SMSPriceReq, token: str = Depends(verify_token)):
 @router.post("/api/luckmail/bulk_buy")
 def api_luckmail_bulk_buy(req: LuckMailBulkBuyReq, token: str = Depends(verify_token)):
     try:
-        from utils.luckmail_service import LuckMailService
+        from utils.email_providers.luckmail_service import LuckMailService
         lm_service = LuckMailService(api_key=req.config.get("api_key"),
                                      preferred_domain=req.config.get("preferred_domain", ""),
                                      email_type=req.config.get("email_type", "ms_graph"),
@@ -647,7 +652,7 @@ async def exchange_gmail_code(req: GmailExchangeReq, token: str = Depends(verify
 
 
 @router.get("/api/sub2api/groups")
-async def get_sub2api_groups(token: str = Depends(verify_token)):
+def get_sub2api_groups(token: str = Depends(verify_token)):
     from curl_cffi import requests as cffi_requests
     sub2api_url = getattr(core_engine.cfg, "SUB2API_URL", "").strip()
     sub2api_key = getattr(core_engine.cfg, "SUB2API_KEY", "").strip()
@@ -698,16 +703,35 @@ async def stream_logs(request: Request, token: str = Query(None)):
     if token not in VALID_TOKENS: raise HTTPException(status_code=401, detail="Unauthorized")
 
     async def log_generator():
-        last_idx = len(log_history)
-        for old_msg in log_history: yield f"data: {old_msg}\n\n"
+        current_snapshot = list(log_history)
+        for old_msg in current_snapshot:
+            yield f"data: {old_msg}\n\n"
+        last_sent_msg = current_snapshot[-1] if current_snapshot else None
+        idle_loops = 0
+
         try:
             while True:
-                if await request.is_disconnected(): break
-                if len(log_history) > last_idx:
-                    for i in range(last_idx, len(log_history)): yield f"data: {log_history[i]}\n\n"
-                    last_idx = len(log_history)
+                if await request.is_disconnected():
+                    break
+                snap = list(log_history)
+                if snap and snap[-1] != last_sent_msg:
+                    start_idx = 0
+                    for i in range(len(snap) - 1, -1, -1):
+                        if snap[i] == last_sent_msg:
+                            start_idx = i + 1
+                            break
+                    for i in range(start_idx, len(snap)):
+                        yield f"data: {snap[i]}\n\n"
+                    last_sent_msg = snap[-1]
+                    idle_loops = 0
+                else:
+                    idle_loops += 1
+                    if idle_loops >= 50:
+                        yield ": keepalive\n\n"
+                        idle_loops = 0
+
                 await asyncio.sleep(0.3)
-        except asyncio.CancelledError:
+        except Exception:
             pass
 
     return StreamingResponse(log_generator(), media_type="text/event-stream")
@@ -797,7 +821,7 @@ async def cluster_view_ws(websocket: WebSocket, token: str = Query(None)):
 
 
 @router.post("/api/cluster/upload_accounts")
-async def cluster_upload_accounts(req: ClusterUploadAccountsReq):
+def cluster_upload_accounts(req: ClusterUploadAccountsReq):
     if req.secret != str(getattr(core_engine.cfg, '_c', {}).get("cluster_secret", "wenfxl666")).strip(): return {
         "status": "error", "message": "密钥错误"}
     success_count = 0

@@ -3,7 +3,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            appVersion: 'v9.0.0',
+            appVersion: 'v9.0.4',
             isLoggedIn: !!localStorage.getItem('auth_token'),
             loginPassword: '',
             currentTab: window.location.hash.replace('#', '') || 'console',
@@ -204,9 +204,8 @@ createApp({
             this.checkUpdate();
         },
         startStatsPolling() {
-            if(this.statsTimer) clearInterval(this.statsTimer);
+            if(this.statsTimer) clearTimeout(this.statsTimer);
             this.pollStats();
-            this.statsTimer = setInterval(this.pollStats, 1000);
         },
         async pollStats() {
             if(!this.isLoggedIn) return;
@@ -222,7 +221,13 @@ createApp({
                         this.clusterNodes = cData.nodes;
                     }
                 }
-            } catch(e){}
+            } catch(e) {
+
+            } finally {
+                this.statsTimer = setTimeout(() => {
+                    this.pollStats();
+                }, 1000);
+            }
         },
         async fetchConfig() {
             try {
@@ -633,42 +638,53 @@ createApp({
 		initSSE() {
             if (this.evtSource) {
                 this.evtSource.close();
+                this.evtSource = null;
             }
             if (this.logFlushTimer) {
                 clearInterval(this.logFlushTimer);
+                this.logFlushTimer = null;
+            }
+            if (this.sseReconnectTimer) {
+                clearTimeout(this.sseReconnectTimer);
+                this.sseReconnectTimer = null;
             }
 
             const token = localStorage.getItem('auth_token');
-            const url = `/api/logs/stream?token=${token}`;
+            if (!token) return;
+            const timestamp = new Date().getTime();
+            const url = `/api/logs/stream?token=${token}&_t=${timestamp}`;
 
             this.evtSource = new EventSource(url);
             this.logFlushTimer = setInterval(() => {
                 if (this.logBuffer.length > 0) {
                     const container = document.getElementById('terminal-container');
-
                     let isScrolledToBottom = true;
                     if (container) {
-                        isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 50;
+                        isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 100;
                     }
                     this.logs.push(...this.logBuffer);
                     this.logBuffer = [];
+
                     if (this.logs.length > 500) {
                         this.logs.splice(0, this.logs.length - 500);
                     }
                     this.$nextTick(() => {
-                        if (container && (isScrolledToBottom || this.logs.length < 50)) {
-                            container.scrollTop = container.scrollHeight;
+                        if (container && (isScrolledToBottom || this.logs.length < 20)) {
+                            container.scrollTo({
+                                top: container.scrollHeight,
+                                behavior: 'auto'
+                            });
                         }
                     });
                 }
-            }, 200);
+            }, 300);
 
             this.evtSource.onmessage = (event) => {
                 let rawText = event.data;
                 rawText = rawText.trim();
                 if (!rawText) return;
 
-                let logObj = { parsed: false, raw: rawText };
+                let logObj = { id: Date.now() + Math.random(), parsed: false, raw: rawText };
                 const regex = /^\[(.*?)\]\s*\[(.*?)\]\s+(.*)$/;
                 const match = rawText.match(regex);
 
@@ -683,11 +699,18 @@ createApp({
                 }
                 this.logBuffer.push(logObj);
             };
-
             this.evtSource.onerror = (event) => {
-                console.error("SSE 连接异常，浏览器将自动尝试重连...", event);
-                if (!this.isLoggedIn) {
+                console.error("🔴 SSE 连接断开或异常。");
+                if (this.evtSource) {
                     this.evtSource.close();
+                    this.evtSource = null;
+                }
+
+                if (this.isLoggedIn) {
+                    console.log("⏳ 准备在 3 秒后强制重新建立日志通道...");
+                    this.sseReconnectTimer = setTimeout(() => {
+                        this.initSSE();
+                    }, 3000);
                 }
             };
         },
@@ -1405,7 +1428,8 @@ createApp({
             }
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/api/cluster/view_ws?token=${this.authToken}`;
+            const token = localStorage.getItem('auth_token');
+            const wsUrl = `${protocol}//${window.location.host}/api/cluster/view_ws?token=${token}`;
 
             this.clusterWs = new WebSocket(wsUrl);
 

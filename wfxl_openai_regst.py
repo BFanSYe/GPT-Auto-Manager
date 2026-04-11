@@ -64,7 +64,7 @@ def _worker_push_thread():
         try: reload_all_configs()
         except: pass
         args = DummyArgs(proxy=getattr(core_engine.cfg, 'DEFAULT_PROXY', None))
-        core_engine.run_stats.update({"success": 0, "failed": 0, "retries": 0, "start_time": time.time()})
+        core_engine.run_stats.update({"success": 0, "failed": 0, "retries": 0, "pwd_blocked": 0, "phone_verify": 0, "start_time": time.time()})
         if getattr(core_engine.cfg, 'ENABLE_CPA_MODE', False): engine.start_cpa(args)
         elif getattr(core_engine.cfg, 'ENABLE_SUB2API_MODE', False): engine.start_sub2api(args)
         else: engine.start_normal(args)
@@ -116,7 +116,11 @@ def _worker_push_thread():
                             s = core_engine.run_stats
                             is_running = engine.is_running()
                             total = s["success"] + s["failed"]
-                            elapsed = round(time.time() - s["start_time"], 1) if (is_running and s["start_time"] > 0) else 0
+                            if is_running:
+                                elapsed = round(time.time() - s["start_time"], 1) if s.get("start_time", 0) > 0 else 0
+                                s["_frozen_elapsed"] = elapsed
+                            else:
+                                elapsed = s.get("_frozen_elapsed", 0)
 
                             stats_payload = {
                                 "success": s["success"], "failed": s["failed"], "retries": s["retries"],
