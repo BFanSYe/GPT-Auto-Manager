@@ -98,6 +98,7 @@ def get_web_password():
 
 
 def _read_clash_pool_env() -> dict:
+    """读取宿主机 Mihomo 代理池的环境文件。"""
     if not os.path.exists(CLASH_POOL_ENV_PATH):
         raise FileNotFoundError(f"未找到 {CLASH_POOL_ENV_PATH}")
     env_map = {}
@@ -116,6 +117,7 @@ def _read_clash_pool_env() -> dict:
 
 
 def _write_clash_pool_env(env_map: dict) -> None:
+    """回写代理池配置，只覆盖关键环境项并保留其余扩展字段。"""
     primary_keys = ["COUNT", "SUB_URL", "SECRET", "IMAGE"]
     lines = []
     for key in primary_keys:
@@ -129,6 +131,7 @@ def _write_clash_pool_env(env_map: dict) -> None:
 
 
 def _run_clash_pool_script(script_path: str, timeout: int = 300) -> tuple[int, str]:
+    """在容器内执行宿主机代理池脚本，并返回退出码与输出。"""
     proc = subprocess.run(
         ["bash", script_path],
         stdout=subprocess.PIPE,
@@ -151,6 +154,11 @@ def _get_clash_pool_status_output() -> str:
 
 
 def _get_clash_pool_group_candidates(env_map: dict | None = None) -> tuple[list[dict], str]:
+    """通过 Mihomo controller API 读取当前真实策略组。
+
+    这样前端在订阅更新后可以直接展示“现在到底有哪些策略组可选”，
+    避免用户手动猜 group_name。
+    """
     try:
         env_map = env_map or _read_clash_pool_env()
         secret = str(env_map.get("SECRET") or "").strip()
@@ -406,6 +414,7 @@ async def save_config(new_config: dict, token: str = Depends(verify_token)):
 
 @router.get("/api/clash_pool/info")
 def get_clash_pool_info(token: str = Depends(verify_token)):
+    """返回当前 Clash 订阅、自助更新状态和实际探测到的策略组。"""
     try:
         env_map = _read_clash_pool_env()
         group_candidates, group_error = _get_clash_pool_group_candidates(env_map)
@@ -426,6 +435,7 @@ def get_clash_pool_info(token: str = Depends(verify_token)):
 
 @router.post("/api/clash_pool/update_subscription")
 def update_clash_pool_subscription(req: ClashPoolUpdateReq, token: str = Depends(verify_token)):
+    """更新订阅链接并执行代理池刷新脚本。"""
     try:
         sub_url = str(req.sub_url or "").strip()
         if not sub_url:

@@ -548,14 +548,21 @@ def handle_registration_result(result: Any, cpa_upload: bool = False, run_ctx: d
     return ret_status
 
 def _queue_proxy_pool_enabled() -> bool:
+    """当前是否启用了“队列式代理池”。
+
+    这里统一抽象 Clash 独享池 与 HTTP 动态代理池，
+    让注册、CPA 补货、Sub2API 补货共用同一套调度入口。
+    """
     return bool((cfg._clash_enable and cfg._clash_pool_mode) or getattr(cfg, "HTTP_DYNAMIC_PROXY_ENABLE", False))
 
 
 def _queue_proxy_pool_requires_switch() -> bool:
+    """当前队列模式是否仍需要调用 smart_switch_node。"""
     return bool(cfg._clash_enable and cfg._clash_pool_mode)
 
 
 def _pool_parallel_limit(requested: int) -> int:
+    """根据当前代理池能力收敛并发数，避免线程数大于可用通道数。"""
     requested = max(1, int(requested))
     if getattr(cfg, "HTTP_DYNAMIC_PROXY_ENABLE", False):
         return max(1, min(requested, int(getattr(cfg, "HTTP_DYNAMIC_PROXY_POOL_SIZE", requested) or requested)))
@@ -568,6 +575,7 @@ def _pool_parallel_limit(requested: int) -> int:
 
 
 def _run_with_pool_proxy(worker_fn):
+    """从 PROXY_QUEUE 中取出一个代理通道执行 worker，并在结束后放回。"""
     p = cfg.PROXY_QUEUE.get()
     try:
         return worker_fn(p, not _queue_proxy_pool_requires_switch())

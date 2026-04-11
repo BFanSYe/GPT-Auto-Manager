@@ -13,11 +13,19 @@ routers/__pycache__/
 data/
 *.db
 *.log
+.env
+.env.*
+*.bak
+*.local
+credentials.json
+token.json
+pool.env
 
 # 本地备份配置
 *副本*.yaml
 config.yaml
 utils/sentinel.py
+data.bak.*/
 
 data
 utils/auth_core/

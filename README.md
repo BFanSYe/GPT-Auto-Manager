@@ -1,45 +1,79 @@
 ﻿# Wenfxl Codex Manager Web Console
 
-## BFanSYe Custom Branch Notes
+## BFanSYe 自定义分支说明 / Custom Branch Notes
 
-This repository includes a maintained custom branch based on upstream `v9.0.4`.
+### 中文说明（默认）
 
-### Custom features added in this fork
+本仓库维护了一个基于上游 `v9.0.4` 的自定义分支，主要用于保留当前生产环境已经验证通过的定制能力。
 
-- LuckMail imported-mailbox mode:
-  - supports calling your own uploaded LuckMail mailbox pool
-  - supports `specified_email`
-  - uses `order/create` + order-based OTP retrieval
-- HTTP dynamic proxy pool:
-  - supports one or more `http://user:pass@host:port` dynamic gateways
-  - supports multi-thread queue dispatch independent from Clash pool mode
-- HeroSMS stability fixes:
-  - HeroSMS API can be configured to bypass the global registration proxy
-  - balance / prices panel remains available even when registration proxies are unstable
-- Telegram notification fixes:
-  - direct-send mode by default
-  - independent `use_proxy` switch
-  - improved default success / stop templates
-- Clash subscription self-service in Web UI:
-  - update subscription URL from the panel
-  - execute pool refresh script from the panel
-  - display detected proxy groups after refresh
-  - populate Clash strategy group as a dropdown
+#### 本 fork 额外保留的功能
 
-### Deployment-specific notes for this custom branch
+- **LuckMail 私有上传邮箱池模式**
+  - 支持调用你自己上传到 LuckMail 的邮箱池
+  - 支持 `specified_email`
+  - 在私有池模式下改为 `order/create` + 按订单取码
+- **HTTP 动态代理池**
+  - 支持一个或多个 `http://user:pass@host:port` 动态代理网关
+  - 支持独立队列分发，适配多线程注册
+- **HeroSMS 稳定性修复**
+  - HeroSMS API 可独立于全局注册代理直连
+  - 余额/价格面板在注册代理不稳定时仍可使用
+- **Telegram 推送修复**
+  - 默认直连 TG
+  - 独立 `use_proxy` 开关
+  - 优化成功/停止模板
+- **Clash 订阅后台自助更新**
+  - 支持在 Web 面板更新订阅链接
+  - 支持在 Web 面板触发代理池重载
+  - 支持显示订阅更新后的真实策略组
+  - 支持将策略组直接放入下拉框选择
 
-- App path: `/opt/openai-cpa`
-- Clash pool path: `/opt/mihomo-pool`
-- The app container mounts:
+#### 本分支部署约定
+
+- 应用目录：`/opt/openai-cpa`
+- Clash 代理池目录：`/opt/mihomo-pool`
+- 当前容器挂载：
   - `/opt/openai-cpa/data:/app/data`
   - `/opt/mihomo-pool:/opt/mihomo-pool`
   - `/var/run/docker.sock:/var/run/docker.sock`
   - `/usr/bin/docker:/usr/local/bin/docker:ro`
 
-### Suggested long-term branch names
+#### 隐私与仓库清洁建议
 
-- Release-style branch: `release/bfansye-custom-v9.0.4`
-- Main-style branch: `main-bfansye`
+- 不要提交 `data/`、`.env`、`credentials.json`、`token.json`
+- 不要把真实域名、API Key、订阅链接、TG Chat ID、邮箱凭据直接写入文档
+- 示例配置建议统一使用占位符或泛化值
+
+#### 建议长期使用的分支命名
+
+- 发布分支：`release/bfansye-custom-v9.0.4`
+- 主维护分支：`main-bfansye`
+
+### English Notes
+
+This repository keeps a custom branch based on upstream `v9.0.4`, mainly to preserve the features already verified in the current production deployment.
+
+#### Extra features preserved in this fork
+
+- **LuckMail imported mailbox mode**
+  - supports using your own uploaded LuckMail mailbox pool
+  - supports `specified_email`
+  - switches to `order/create` + order-based OTP retrieval in imported-pool mode
+- **HTTP dynamic proxy pool**
+  - supports one or more `http://user:pass@host:port` dynamic gateways
+  - queue-based dispatch for multi-thread registration
+- **HeroSMS stability fixes**
+  - HeroSMS API can bypass the global registration proxy
+  - balance/price panel remains usable even if registration proxies are unstable
+- **Telegram notification fixes**
+  - direct Telegram delivery by default
+  - separate `use_proxy` toggle
+  - improved success/stop templates
+- **Clash subscription self-service**
+  - update subscription URL from the web panel
+  - trigger pool refresh from the web panel
+  - display actual detected strategy groups after refresh
+  - populate strategy group field as a dropdown
 
 A Python-based registration and inventory management tool that is now centered around a **Web Console workflow** instead of a script-only workflow.
 

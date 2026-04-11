@@ -88,6 +88,7 @@ def init_config():
 
     return user_config
 
+# 运行时全局配置缓存。所有 Web 保存动作最终都会回写 data/config.yaml，再由这里热加载到内存。
 _c: dict = {}
 ENABLE_SUB_DOMAINS: bool = False
 SUB_DOMAIN_COUNT: int = 10
@@ -112,6 +113,9 @@ MC_API_BASE: str = ""
 MC_KEY: str = ""
 
 DEFAULT_PROXY: str = ""
+# HTTP 动态代理池：用于“动态 HTTP 网关”类型代理服务商。
+# 当 enable=true 时，系统会把 proxy_list 或 default_proxy 装入 PROXY_QUEUE，
+# 由多线程注册逻辑逐个领取通道，而不是走 Clash/Mihomo API 切点。
 HTTP_DYNAMIC_PROXY_ENABLE: bool = False
 HTTP_DYNAMIC_PROXY_POOL_SIZE: int = 0
 HTTP_DYNAMIC_PROXY_LIST: list = []
@@ -412,6 +416,7 @@ def reload_all_configs():
     NORMAL_SLEEP_MAX = _normal.get("sleep_max", 30)
     NORMAL_TARGET_COUNT = _normal.get("target_count", 0)
 
+    # 自定义动态 HTTP 代理池配置。若只填一条代理，系统会按 pool_size 复制成多个工作位。
     _http_dynamic_proxy = _c.get("http_dynamic_proxy", {})
     HTTP_DYNAMIC_PROXY_ENABLE = bool(_http_dynamic_proxy.get("enable", False))
     HTTP_DYNAMIC_PROXY_POOL_SIZE = safe_int(_http_dynamic_proxy.get("pool_size", REG_THREADS), REG_THREADS, minimum=1)
@@ -429,6 +434,11 @@ def reload_all_configs():
     _clash_pool_mode = _clash_conf.get("pool_mode", False)
     WARP_PROXY_LIST  = _c.get("warp_proxy_list", [])
 
+    # PROXY_QUEUE 是调度层统一消费的代理通道队列。
+    # 优先级：
+    # 1. Clash 独享池模式
+    # 2. HTTP 动态代理池模式
+    # 3. 单条 default_proxy / 直连
     with PROXY_QUEUE.mutex:
         PROXY_QUEUE.queue.clear()
     if _clash_enable and _clash_pool_mode and WARP_PROXY_LIST:

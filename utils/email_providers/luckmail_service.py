@@ -137,6 +137,12 @@ class LuckMailService:
                 time.sleep(1.5)
 
     def get_imported_email_and_order(self, specified_email: str = "") -> tuple:
+        """从 LuckMail 私有邮箱池创建接码订单。
+
+        与 purchase 模式不同，这里走的是 /order/create，
+        适用于“用户先在 LuckMail 后台/API 导入邮箱，再由本项目消费”的场景。
+        返回值第二项不是 token，而是 order_no。
+        """
         api_url = f"{self.base_url}/api/v1/openapi/order/create"
         headers = {"X-API-Key": self.api_key, "Content-Type": "application/json"}
         payload = {"project_code": self.project_code}
@@ -180,6 +186,7 @@ class LuckMailService:
         raise Exception(f"LuckMail 私有池下单失败: {last_error}")
 
     def get_order_code(self, order_no: str) -> str:
+        """按订单号查询验证码，配合 imported pool 模式使用。"""
         if not order_no:
             return ""
 
