@@ -119,8 +119,28 @@ def test_proxy_liveness(proxy_url=None):
             if loc in blocked_regions:
                 print(f"[{ts()}] [代理测活] {display_name} 地区受限 ({loc})，弃用！")
                 return False
-                
-            print(f"[{ts()}] [代理测活] {display_name} 成功！地区 ({loc})，延迟: {res.elapsed.total_seconds():.2f}s")
+
+            try:
+                from curl_cffi import requests as cffi_requests
+                auth_resp = cffi_requests.get(
+                    "https://auth.openai.com/",
+                    proxies=proxies,
+                    timeout=8,
+                    verify=True,
+                    allow_redirects=False,
+                    impersonate="chrome110",
+                )
+                if auth_resp.status_code >= 500:
+                    print(f"[{ts()}] [代理测活] {display_name} OpenAI 入口异常 (HTTP {auth_resp.status_code})，弃用！")
+                    return False
+            except Exception as e:
+                print(f"[{ts()}] [代理测活] {display_name} OpenAI TLS 校验失败: {e}")
+                return False
+
+            print(
+                f"[{ts()}] [代理测活] {display_name} 成功！地区 ({loc})，"
+                f"延迟: {res.elapsed.total_seconds():.2f}s"
+            )
             return True
         return False
     except Exception:
@@ -180,10 +200,19 @@ def _do_smart_switch(proxy_url=None):
         safe_group_name = urllib.parse.quote(actual_group_name)
         all_nodes = proxies_data[actual_group_name].get('all', [])
         
-        valid_nodes = [
-            n for n in all_nodes 
-            if not any(kw.upper() in n.upper() for kw in NODE_BLACKLIST)
-        ]
+        valid_nodes = []
+        for n in all_nodes:
+            node_name = str(n or "").strip()
+            if not node_name:
+                continue
+            if node_name == actual_group_name:
+                continue
+            node_meta = proxies_data.get(node_name, {})
+            if isinstance(node_meta, dict) and 'all' in node_meta:
+                continue
+            if any(kw.upper() in node_name.upper() for kw in NODE_BLACKLIST):
+                continue
+            valid_nodes.append(node_name)
         
         if not valid_nodes:
             print(f"[{ts()}] [ERROR] {display_name} 过滤后无可用节点，请检查黑名单。")
@@ -243,9 +272,9 @@ def _do_smart_switch(proxy_url=None):
             except Exception as e:
                 print(f"[{ts()}] [代理池] {display_name} 优选模式异常: {e}，回退到随机抽卡模式...")
 
-        max_retries = 10
-        for i in range(1, max_retries + 1):
-            selected_node = random.choice(valid_nodes)
+        max_retries = min(10, len(valid_nodes))
+        random.shuffle(valid_nodes)
+        for i, selected_node in enumerate(valid_nodes[:max_retries], start=1):
             
             print(f"\n[{ts()}] [代理池] {display_name} 尝试切换节点: [{clean_for_log(selected_node)}] ({i}/{max_retries})")
             

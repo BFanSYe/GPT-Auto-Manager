@@ -547,6 +547,34 @@ def handle_registration_result(result: Any, cpa_upload: bool = False, run_ctx: d
         send_tg_msg_sync(success_text)
     return ret_status
 
+def _queue_proxy_pool_enabled() -> bool:
+    return bool((cfg._clash_enable and cfg._clash_pool_mode) or getattr(cfg, "HTTP_DYNAMIC_PROXY_ENABLE", False))
+
+
+def _queue_proxy_pool_requires_switch() -> bool:
+    return bool(cfg._clash_enable and cfg._clash_pool_mode)
+
+
+def _pool_parallel_limit(requested: int) -> int:
+    requested = max(1, int(requested))
+    if getattr(cfg, "HTTP_DYNAMIC_PROXY_ENABLE", False):
+        return max(1, min(requested, int(getattr(cfg, "HTTP_DYNAMIC_PROXY_POOL_SIZE", requested) or requested)))
+    if cfg._clash_enable and cfg._clash_pool_mode:
+        try:
+            return max(1, min(requested, cfg.PROXY_QUEUE.qsize()))
+        except Exception:
+            return requested
+    return requested
+
+
+def _run_with_pool_proxy(worker_fn):
+    p = cfg.PROXY_QUEUE.get()
+    try:
+        return worker_fn(p, not _queue_proxy_pool_requires_switch())
+    finally:
+        cfg.PROXY_QUEUE.put(p)
+        cfg.PROXY_QUEUE.task_done()
+
 def run_and_refresh(proxy, args, cpa_upload=False, skip_switch=False):
     proxy = format_docker_url(proxy)
     """切节点 → 注册 → 处理结果。"""
@@ -828,17 +856,13 @@ def normal_main_loop(args, stop_event: threading.Event):
                     min(cfg.REG_THREADS, target_count - success_count)
                     if target_count > 0 else cfg.REG_THREADS
                 )
+                current_batch = _pool_parallel_limit(current_batch)
                 print(f"[{ts()}] [INFO] 启用多线程并发 ({current_batch} 条通道)")
 
                 def _worker():
                     if stop_event.is_set(): return "stopped"
-                    if cfg._clash_enable and cfg._clash_pool_mode:
-                        p = cfg.PROXY_QUEUE.get()
-                        try:
-                            return run_and_refresh(p, args, False, skip_switch=False)
-                        finally:
-                            cfg.PROXY_QUEUE.put(p)
-                            cfg.PROXY_QUEUE.task_done()
+                    if _queue_proxy_pool_enabled():
+                        return _run_with_pool_proxy(lambda p, skip_switch: run_and_refresh(p, args, False, skip_switch=skip_switch))
                     return run_and_refresh(args.proxy, args, False, skip_switch=True)
 
                 with ThreadPoolExecutor(max_workers=current_batch) as ex:
@@ -847,13 +871,8 @@ def normal_main_loop(args, stop_event: threading.Event):
                         if f.result() == "success":
                             success_count += 1
             else:
-                if cfg._clash_enable and cfg._clash_pool_mode:
-                    p = cfg.PROXY_QUEUE.get()
-                    try:
-                        status = run_and_refresh(p, args, False, skip_switch=False)
-                    finally:
-                        cfg.PROXY_QUEUE.put(p)
-                        cfg.PROXY_QUEUE.task_done()
+                if _queue_proxy_pool_enabled():
+                    status = _run_with_pool_proxy(lambda p, skip_switch: run_and_refresh(p, args, False, skip_switch=skip_switch))
                 else:
                     status = run_and_refresh(args.proxy, args, False, skip_switch=True)
 
@@ -986,18 +1005,14 @@ async def cpa_main_loop(args, async_stop_event: asyncio.Event):
 
                 def _cpa_worker():
                     if async_stop_event.is_set(): return "stopped"
-                    if cfg._clash_enable and cfg._clash_pool_mode:
-                        p = cfg.PROXY_QUEUE.get()
-                        try:
-                            return run_and_refresh(p, args, cpa_upload=True, skip_switch=False)
-                        finally:
-                            cfg.PROXY_QUEUE.put(p)
-                            cfg.PROXY_QUEUE.task_done()
+                    if _queue_proxy_pool_enabled():
+                        return _run_with_pool_proxy(lambda p, skip_switch: run_and_refresh(p, args, cpa_upload=True, skip_switch=skip_switch))
                     return run_and_refresh(args.proxy, args, cpa_upload=True, skip_switch=True)
 
                 while success_in_this_cycle < need_to_reg and not async_stop_event.is_set():
                     remaining  = need_to_reg - success_in_this_cycle
                     batch_size = min(cfg.REG_THREADS, remaining)
+                    batch_size = _pool_parallel_limit(batch_size)
 
                     if cfg._clash_enable and not cfg._clash_pool_mode:
                         print(f"[{ts()}] [INFO] [CPA补货] 切换全局节点...")
@@ -1021,13 +1036,11 @@ async def cpa_main_loop(args, async_stop_event: asyncio.Event):
                                 await asyncio.sleep(15)
                     else:
                         print(f"[{ts()}] [INFO] 单线程补货: {success_in_this_cycle}/{need_to_reg}")
-                        if cfg._clash_enable and cfg._clash_pool_mode:
-                            p = cfg.PROXY_QUEUE.get()
-                            try:
-                                status = await loop.run_in_executor(None, run_and_refresh, p, args, True, False)
-                            finally:
-                                cfg.PROXY_QUEUE.put(p)
-                                cfg.PROXY_QUEUE.task_done()
+                        if _queue_proxy_pool_enabled():
+                            status = await loop.run_in_executor(
+                                None,
+                                lambda: _run_with_pool_proxy(lambda p, skip_switch: run_and_refresh(p, args, True, skip_switch))
+                            )
                         else:
                             status = await loop.run_in_executor(
                                 None, run_and_refresh, args.proxy, args, True, True
@@ -1136,18 +1149,14 @@ async def sub2api_main_loop(args, async_stop_event: asyncio.Event):
 
                 def _sub2api_worker():
                     if async_stop_event.is_set(): return "stopped"
-                    if cfg._clash_enable and cfg._clash_pool_mode:
-                        p = cfg.PROXY_QUEUE.get()
-                        try:
-                            return _sub2api_run_wrapper(p, False)
-                        finally:
-                            cfg.PROXY_QUEUE.put(p)
-                            cfg.PROXY_QUEUE.task_done()
+                    if _queue_proxy_pool_enabled():
+                        return _run_with_pool_proxy(_sub2api_run_wrapper)
                     return _sub2api_run_wrapper(args.proxy, True)
 
                 while success_in_this_cycle < need_to_reg and not async_stop_event.is_set():
                     remaining  = need_to_reg - success_in_this_cycle
                     batch_size = min(cfg.REG_THREADS, remaining)
+                    batch_size = _pool_parallel_limit(batch_size)
 
                     if cfg._clash_enable and not cfg._clash_pool_mode:
                         print(f"[{ts()}] [INFO] [Sub2API补货] 切换全局节点...")
@@ -1174,13 +1183,8 @@ async def sub2api_main_loop(args, async_stop_event: asyncio.Event):
 
                     else:
                         print(f"[{ts()}] [INFO] 单线程补货: {success_in_this_cycle}/{need_to_reg}")
-                        if cfg._clash_enable and cfg._clash_pool_mode:
-                            p = cfg.PROXY_QUEUE.get()
-                            try:
-                                status = await loop.run_in_executor(None, _sub2api_run_wrapper, p, False)
-                            finally:
-                                cfg.PROXY_QUEUE.put(p)
-                                cfg.PROXY_QUEUE.task_done()
+                        if _queue_proxy_pool_enabled():
+                            status = await loop.run_in_executor(None, lambda: _run_with_pool_proxy(_sub2api_run_wrapper))
                         else:
                             status = await loop.run_in_executor(
                                 None, _sub2api_run_wrapper, args.proxy, True

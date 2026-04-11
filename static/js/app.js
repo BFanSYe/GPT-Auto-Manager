@@ -53,6 +53,7 @@ createApp({
             config: null,
             blacklistStr: "",
             warpListStr: "",
+            httpDynamicListStr: "",
             accounts: [],
             selectedAccounts: [],
 			currentPage: 1,
@@ -231,10 +232,37 @@ createApp({
                     this.config.tg_bot = { enable: false, token: '', chat_id: '' };
                 }
                 if (!this.config.tg_bot.template_success) {
-                    this.config.tg_bot.template_success = "🎉 <b>注册成功</b>\n⏰ 时间: <code>{time}</code>\n📧 账号: <code>{email}</code>\n🔑 密码: <code>{password}</code>";
+                    this.config.tg_bot.template_success = "🎉 <b>注册成功</b>\n━━━━━━━━━━━━\n⏰ 时间：<code>{time}</code>\n📧 账号：<code>{email}</code>\n🔑 密码：<code>{password}</code>";
                 }
                 if (!this.config.tg_bot.template_stop) {
-                    this.config.tg_bot.template_stop = "🛑 <b>系统已收到停止指令</b>\n\n📊 <b>最终运行统计</b>：\n成功率: {success_rate}% · 成功: {success}/{target} · 失败: {failed} 次 · 风控拦截: {retries} 次 · 密码受阻: {pwd_blocked} 次 · 出现手机: {phone_verify} 次 · 总耗时: {elapsed_time}s · 平均单号: {avg_time}s";
+                    this.config.tg_bot.template_stop = "🛑 <b>任务已停止</b>\n━━━━━━━━━━━━\n📊 成功率：<code>{success_rate}%</code>\n✅ 成功：<code>{success}/{target}</code>\n❌ 失败：<code>{failed}</code>\n🚧 风控：<code>{retries}</code>\n🔒 密码受阻：<code>{pwd_blocked}</code>\n📱 出现手机：<code>{phone_verify}</code>\n⏱ 总耗时：<code>{elapsed_time}s</code>\n📈 平均单号：<code>{avg_time}s</code>";
+                }
+                if (this.config.tg_bot.use_proxy === undefined) {
+                    this.config.tg_bot.use_proxy = false;
+                }
+                if (!this.config.luckmail) {
+                    this.config.luckmail = {};
+                }
+                if (this.config.luckmail.use_imported_pool === undefined) {
+                    this.config.luckmail.use_imported_pool = false;
+                }
+                if (this.config.luckmail.specified_email === undefined) {
+                    this.config.luckmail.specified_email = '';
+                }
+                if (!this.config.http_dynamic_proxy) {
+                    this.config.http_dynamic_proxy = { enable: false, pool_size: 3, proxy_list: [] };
+                }
+                if (this.config.http_dynamic_proxy.pool_size === undefined) {
+                    this.config.http_dynamic_proxy.pool_size = 3;
+                }
+                if (!Array.isArray(this.config.http_dynamic_proxy.proxy_list)) {
+                    this.config.http_dynamic_proxy.proxy_list = [];
+                }
+                if (!this.config.hero_sms) {
+                    this.config.hero_sms = {};
+                }
+                if (this.config.hero_sms.use_proxy === undefined) {
+                    this.config.hero_sms.use_proxy = false;
                 }
 				if (!this.config.sub_domain_level) {
                     this.config.sub_domain_level = 1;
@@ -266,6 +294,9 @@ createApp({
                 if(Array.isArray(this.config.warp_proxy_list)) {
                     this.warpListStr = this.config.warp_proxy_list.join('\n');
                 }
+                if(Array.isArray(this.config.http_dynamic_proxy.proxy_list)) {
+                    this.httpDynamicListStr = this.config.http_dynamic_proxy.proxy_list.join('\n');
+                }
                 if (this.config.cluster_node_name === undefined) this.config.cluster_node_name = '';
                 if (this.config.cluster_master_url === undefined) this.config.cluster_master_url = '';
                 if (this.config.cluster_secret === undefined) this.config.cluster_secret = 'wenfxl666';
@@ -277,6 +308,10 @@ createApp({
                     this.config.clash_proxy_pool.blacklist = this.blacklistStr.split('\n').map(s => s.trim()).filter(s => s);
                 }
                 this.config.warp_proxy_list = this.warpListStr.split('\n').map(s => s.trim()).filter(s => s);
+                if (!this.config.http_dynamic_proxy) {
+                    this.config.http_dynamic_proxy = {};
+                }
+                this.config.http_dynamic_proxy.proxy_list = this.httpDynamicListStr.split('\n').map(s => s.trim()).filter(s => s);
                 const res = await this.authFetch('/api/config', {
                     method: 'POST', body: JSON.stringify(this.config)
                 });

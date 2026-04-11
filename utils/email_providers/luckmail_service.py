@@ -136,6 +136,81 @@ class LuckMailService:
                     raise Exception(f"LuckMail 购号异常 (已重试{max_retries}次): {e}")
                 time.sleep(1.5)
 
+    def get_imported_email_and_order(self, specified_email: str = "") -> tuple:
+        api_url = f"{self.base_url}/api/v1/openapi/order/create"
+        headers = {"X-API-Key": self.api_key, "Content-Type": "application/json"}
+        payload = {"project_code": self.project_code}
+        if self.email_type:
+            payload["email_type"] = self.email_type
+        if self.preferred_domain:
+            payload["domain"] = self.preferred_domain
+        if specified_email:
+            payload["specified_email"] = specified_email.strip().lower()
+        if self.email_type == "google_variant" and self.variant_mode:
+            payload["variant_mode"] = self.variant_mode
+
+        last_error = None
+        for attempt in range(1, 4):
+            try:
+                resp = requests.post(
+                    api_url,
+                    headers=headers,
+                    json=payload,
+                    proxies=self.proxies,
+                    timeout=30,
+                    impersonate="chrome110"
+                )
+                if resp.status_code in [429, 502, 503, 504]:
+                    print(f"[{cfg.ts()}] [LuckMail] 私有池下单网关异常 ({resp.status_code})，重试 {attempt}/3...")
+                    time.sleep(2 * attempt)
+                    continue
+
+                res_data = resp.json()
+                if res_data.get("code") != 0:
+                    raise Exception(res_data.get("message") or resp.text)
+
+                data = res_data.get("data", {}) or {}
+                email = str(data.get("email_address") or "").strip().lower()
+                order_no = str(data.get("order_no") or "").strip()
+                return email, order_no
+            except Exception as e:
+                last_error = e
+                if attempt < 3:
+                    time.sleep(1.5 * attempt)
+        raise Exception(f"LuckMail 私有池下单失败: {last_error}")
+
+    def get_order_code(self, order_no: str) -> str:
+        if not order_no:
+            return ""
+
+        api_url = f"{self.base_url}/api/v1/openapi/order/{order_no}/code"
+        headers = {"X-API-Key": self.api_key}
+
+        try:
+            resp = requests.get(
+                api_url,
+                headers=headers,
+                proxies=self.proxies,
+                timeout=30,
+                impersonate="chrome110"
+            )
+            res_data = resp.json()
+            if res_data.get("code") != 0:
+                return ""
+
+            data = res_data.get("data", {}) or {}
+            if str(data.get("status") or "").strip().lower() != "success":
+                return ""
+
+            code = str(data.get("verification_code") or "").strip()
+            if code:
+                match = re.search(r'\b\d{6}\b', code)
+                if match:
+                    return match.group(0)
+            return ""
+        except Exception:
+            return ""
+
     def bulk_purchase(self, quantity: int = 1, auto_tag: bool = False, tag_id: int = None) -> list:
         api_url = f"{self.base_url}/api/v1/openapi/email/purchase"
         headers = {"X-API-Key": self.api_key, "Content-Type": "application/json"}

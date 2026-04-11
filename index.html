@@ -1006,17 +1006,29 @@
                                         </div>
 
                                         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                                            <div class="space-y-2 md:col-span-2 lg:col-span-3">
+                                                <label class="relative inline-flex p-3 md:p-4 bg-emerald-50/60 rounded-xl border border-emerald-100 cursor-pointer hover:bg-emerald-50/90 transition-colors w-full group shadow-sm">
+                                                    <input type="checkbox" v-model="config.luckmail.use_imported_pool" class="sr-only peer">
+                                                    <div class="relative w-11 h-6 shrink-0 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-emerald-600 shadow-inner transition-colors duration-300"></div>
+                                                    <div class="ml-4 flex flex-col">
+                                                        <span class="text-sm font-black text-emerald-900 block tracking-wide">调用 LuckMail 已上传私有邮箱池</span>
+                                                        <span class="text-xs text-emerald-700/90 font-medium block mt-0.5">开启后不再走“购买邮箱/历史复用”，而是从你在 LuckMail 后台或 API 已导入的邮箱池里分配邮箱并按订单取码。</span>
+                                                    </div>
+                                                </label>
+                                            </div>
                                             <div class="space-y-2">
                                                 <label class="block text-xs font-black text-slate-500 uppercase tracking-wider">邮箱类型</label>
                                                 <select v-model="config.luckmail.email_type" @change="config.luckmail.preferred_domain=''" class="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm text-sm relative bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[right_10px_center] bg-no-repeat">
                                                     <option value="ms_graph">微软邮箱 (ms_graph)</option>
                                                     <option value="ms_imap">微软邮箱 (ms_imap)</option>
                                                     <option value="google_variant">谷歌变种</option>
+                                                    <option value="self_built">自建邮箱 (self_built)</option>
                                                 </select>
                                             </div>
                                             <div class="space-y-2">
                                                 <label class="block text-xs font-black text-slate-500 uppercase tracking-wider">指定后缀</label>
-                                                <select v-if="config.luckmail.email_type !== 'google_variant'" v-model="config.luckmail.preferred_domain" class="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm text-sm relative bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[right_10px_center] bg-no-repeat">
+                                                <input v-if="config.luckmail.use_imported_pool" type="text" v-model.trim="config.luckmail.preferred_domain" class="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm text-sm font-mono placeholder:text-slate-300" placeholder="如 outlook.com / 你的自定义域名">
+                                                <select v-else-if="config.luckmail.email_type !== 'google_variant'" v-model="config.luckmail.preferred_domain" class="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm text-sm relative bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:10px_10px] bg-[right_10px_center] bg-no-repeat">
                                                     <option value="">不限 (随机)</option>
                                                     <option value="outlook.com">@outlook.com</option>
                                                     <option value="hotmail.com">@hotmail.com</option>
@@ -1026,6 +1038,10 @@
                                                     <option value="gmail.com">@gmail.com</option>
                                                     <option value="googlemail.com">@googlemail.com</option>
                                                 </select>
+                                            </div>
+                                            <div v-if="config.luckmail.use_imported_pool" class="space-y-2">
+                                                <label class="block text-xs font-black text-slate-500 uppercase tracking-wider">指定邮箱</label>
+                                                <input type="text" v-model.trim="config.luckmail.specified_email" class="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors shadow-sm text-sm font-mono placeholder:text-slate-300" placeholder="如 user@outlook.com，可留空">
                                             </div>
                                             <div v-if="config.luckmail.email_type === 'google_variant'" class="space-y-2">
                                                 <label class="block text-xs font-black text-emerald-600 uppercase tracking-wider">变种模式</label>
@@ -1039,7 +1055,7 @@
                                             </div>
                                         </div>
 
-                                        <div class="pt-4 border-t border-slate-100">
+                                        <div v-if="!config.luckmail.use_imported_pool" class="pt-4 border-t border-slate-100">
                                             <label class="relative inline-flex p-3 md:p-4 bg-indigo-50/50 rounded-xl border border-indigo-100 cursor-pointer hover:bg-indigo-50/80 transition-colors w-full group shadow-sm">
                                                 <input type="checkbox" v-model="config.luckmail.reuse_purchased" class="sr-only peer">
                                                 <div class="relative w-11 h-6 shrink-0 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-blue-600 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
@@ -1049,9 +1065,14 @@
                                                 </div>
                                             </label>
                                         </div>
+                                        <div v-else class="pt-4 border-t border-slate-100">
+                                            <div class="text-xs text-emerald-700 font-bold bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-3 leading-relaxed">
+                                                当前为 <span class="font-black">LuckMail 私有邮箱池模式</span>：项目会调用你在 LuckMail 已导入的邮箱，使用 <code class="font-mono">order/create</code> 分配邮箱，再按订单轮询验证码。此模式不会使用“历史已购复用”和“手动囤号”。
+                                            </div>
+                                        </div>
                                     </div>
 
-                                    <div class="p-5 md:p-6 bg-gradient-to-br from-indigo-50/80 to-white rounded-2xl border border-indigo-100 shadow-md">
+                                    <div v-if="!config.luckmail.use_imported_pool" class="p-5 md:p-6 bg-gradient-to-br from-indigo-50/80 to-white rounded-2xl border border-indigo-100 shadow-md">
                                         <div class="flex items-center justify-between mb-5 pb-4 border-b border-indigo-100/60">
                                             <h4 class="text-sm md:text-base font-black text-indigo-800 flex items-center gap-2 tracking-wide">
                                                 <span class="text-xl">🛒</span> 手动囤号控制台
@@ -1263,6 +1284,14 @@
 
                                     <div class="md:col-span-2 flex flex-col sm:flex-row gap-4 mt-2 pt-6 border-t border-orange-100">
                                         <label class="relative inline-flex flex-1 items-center p-4 bg-white rounded-xl border border-orange-200 shadow-sm cursor-pointer hover:bg-orange-50 transition-colors group">
+                                            <input type="checkbox" v-model="config.hero_sms.use_proxy" class="sr-only peer">
+                                            <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-orange-500 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
+                                            <span class="ml-4 text-sm font-black text-orange-900 tracking-wide">HeroSMS API 走全局代理 <span class="text-xs font-medium text-orange-600/80 block mt-0.5">(默认建议关闭，直连更稳)</span></span>
+                                        </label>
+                                    </div>
+
+                                    <div class="md:col-span-2 flex flex-col sm:flex-row gap-4 mt-2">
+                                        <label class="relative inline-flex flex-1 items-center p-4 bg-white rounded-xl border border-orange-200 shadow-sm cursor-pointer hover:bg-orange-50 transition-colors group">
                                             <input type="checkbox" v-model="config.hero_sms.auto_pick_country" class="sr-only peer">
                                             <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-orange-500 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
                                             <span class="ml-4 text-sm font-black text-orange-900 tracking-wide">智能国家优选 <span class="text-xs font-medium text-orange-600/80 block mt-0.5">(避开黑名单/超时区)</span></span>
@@ -1292,6 +1321,39 @@
                                     <button @click="showPwd.proxy = !showPwd.proxy" class="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-slate-400 hover:text-blue-500">
                                         {{ showPwd.proxy ? '👁️' : '🙈' }}
                                     </button>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-200/60 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white" v-if="config.http_dynamic_proxy">
+                                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b border-emerald-100 pb-5">
+                                    <h3 class="text-xl md:text-2xl font-black text-emerald-700 tracking-tight flex items-center gap-2"><span>🚪</span> HTTP 动态代理池</h3>
+                                    <label class="relative inline-flex bg-white px-4 py-2.5 md:px-5 md:py-3 rounded-xl cursor-pointer hover:bg-emerald-50 transition-colors shadow-sm border border-emerald-200 w-full sm:w-auto items-center justify-center group">
+                                        <input type="checkbox" v-model="config.http_dynamic_proxy.enable" class="sr-only peer">
+                                        <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-emerald-600 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
+                                        <span class="font-black text-emerald-900 text-sm md:text-base ml-3 tracking-wide">开启动态代理池</span>
+                                    </label>
+                                </div>
+
+                                <div class="space-y-5" :class="{'opacity-50 pointer-events-none grayscale-[50%] transition-opacity duration-300': !config.http_dynamic_proxy.enable}">
+                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 leading-relaxed shadow-sm">
+                                        适用于 <code class="font-mono">http://用户名:密码@主机:端口</code> 这类动态代理网关。开启后，多线程会从独立代理队列中取通道；如果你只填一条动态代理，系统会按通道数复制成多个独立工作位，适合“每次连接/请求自动换 IP”的服务商。
+                                    </div>
+
+                                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                                        <div>
+                                            <label class="block text-slate-700 text-xs font-extrabold mb-2 uppercase tracking-wider">动态池通道数</label>
+                                            <input type="number" min="1" v-model.number="config.http_dynamic_proxy.pool_size" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-sm font-mono text-sm">
+                                            <span class="block text-[11px] text-slate-400 mt-2 font-medium">建议与 reg_threads 保持一致</span>
+                                        </div>
+                                        <div class="lg:col-span-2">
+                                            <label class="block text-slate-700 text-xs font-extrabold mb-2 uppercase tracking-wider flex items-center justify-between">
+                                                动态代理列表
+                                                <span class="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200">换行分隔</span>
+                                            </label>
+                                            <textarea v-model="httpDynamicListStr" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-inner h-[120px] font-mono text-xs leading-relaxed placeholder:text-slate-300" placeholder="http://customer-xxx:password@gate.example.com:10000&#10;http://customer-yyy:password@gate.example.com:10000"></textarea>
+                                            <span class="block text-[11px] text-slate-400 mt-2 font-medium">留空时自动回退使用上方“全局默认代理”。如果你只提供一条动态代理，项目会复制为多个线程通道。</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -1874,7 +1936,14 @@
                                                     {{ showPwd.tg_chatid ? '👁️' : '🙈' }}
                                                 </button>
                                             </div>
-                                            <p class="text-[11px] text-sky-600/80 mt-2 font-medium bg-sky-50/50 p-2 rounded inline-block">* 系统在推送消息时会自动走全局配置里的网络代理</p>
+                                            <p class="text-[11px] text-sky-600/80 mt-2 font-medium bg-sky-50/50 p-2 rounded inline-block">* 默认直连 Telegram，更稳；仅当你的服务器直连 Telegram 不通时再开启代理。</p>
+                                        </div>
+                                        <div class="bg-white p-4 rounded-xl border border-sky-100 shadow-sm">
+                                            <label class="relative inline-flex items-center p-3 bg-sky-50/50 rounded-xl border border-sky-100 cursor-pointer hover:bg-sky-50 transition-colors w-full group">
+                                                <input type="checkbox" v-model="config.tg_bot.use_proxy" class="sr-only peer">
+                                                <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-sky-500 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
+                                                <span class="ml-4 text-sm font-black text-sky-900 tracking-wide">Telegram 消息走全局代理 <span class="text-xs font-medium text-sky-600/80 block mt-0.5">(默认建议关闭)</span></span>
+                                            </label>
                                         </div>
                                         <div class="mt-4 border-t border-sky-200/60 pt-6">
                                             <div class="flex flex-col md:flex-row items-start md:items-center justify-between mb-4 gap-4">

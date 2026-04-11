@@ -84,11 +84,25 @@ luckmail:
   preferred_domain: ""
   email_type: ms_graph
   variant_mode: ''
+  # true = 调用你已导入到 LuckMail 私有邮箱池的邮箱；false = 走 LuckMail 购号/历史复用
+  use_imported_pool: false
+  # 私有邮箱池模式下可指定某个具体邮箱，不填则按 email_type/domain 自动分配
+  specified_email: ""
   reuse_purchased: true
   tag_id: 
 # [代理配置]
 # openai注册时代理地址，例子：http://127.0.0.1:7897。如果是国外服务器此项可以不填
 default_proxy: ""
+
+# [HTTP 动态代理池]
+# 适用于 HTTP 动态代理网关（用户名:密码@主机:端口），支持多线程独立通道复用同一条或多条动态代理
+http_dynamic_proxy:
+  enable: false
+  # 动态代理池通道数。通常建议与 reg_threads 保持一致
+  pool_size: 3
+  # 支持填写一条或多条代理。若留空则回退使用上面的 default_proxy
+  proxy_list:
+    - "http://user:pass@gate.example.com:10000"
 
 # 是否开启注册多线程并发 (true/false)
 enable_multi_thread_reg: false    
@@ -217,6 +231,7 @@ hero_sms:
   base_url: https://hero-sms.com/stubs/handler_api.php
   country: 50
   service: dr
+  use_proxy: false
   auto_pick_country: false
   reuse_phone: true
   max_price: 0.08
@@ -237,8 +252,26 @@ tg_bot:
   enable: false
   token: ''
   chat_id: ''
+  use_proxy: false
   mask_email: false
   mask_password: false
+  template_success: |
+    🎉 <b>注册成功</b>
+    ━━━━━━━━━━━━
+    ⏰ 时间：<code>{time}</code>
+    📧 账号：<code>{email}</code>
+    🔑 密码：<code>{password}</code>
+  template_stop: |
+    🛑 <b>任务已停止</b>
+    ━━━━━━━━━━━━
+    📊 成功率：<code>{success_rate}%</code>
+    ✅ 成功：<code>{success}/{target}</code>
+    ❌ 失败：<code>{failed}</code>
+    🚧 风控：<code>{retries}</code>
+    🔒 密码受阻：<code>{pwd_blocked}</code>
+    📱 出现手机：<code>{phone_verify}</code>
+    ⏱ 总耗时：<code>{elapsed_time}s</code>
+    📈 平均单号：<code>{avg_time}s</code>
 
 # WEB端密码
 web_password: admin

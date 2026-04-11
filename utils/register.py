@@ -500,7 +500,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
             need_otp = False
 
         if need_otp:
-            if cfg.EMAIL_API_MODE == "luckmail":
+            if cfg.EMAIL_API_MODE == "luckmail" and not getattr(cfg, 'LUCKMAIL_USE_IMPORTED_POOL', False):
                 try:
                     from utils.luckmail_service import LuckMailService
                     print(f"[{cfg.ts()}] [INFO] 正在检测 LuckMail 邮箱（{mask_email(email)}）是否存活...")
@@ -751,7 +751,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         resp, current_url = _follow_redirect_chain_local(s_log, next_url, proxies)
 
         if current_url.endswith("/email-verification"):
-            if cfg.EMAIL_API_MODE == "luckmail":
+            if cfg.EMAIL_API_MODE == "luckmail" and not getattr(cfg, 'LUCKMAIL_USE_IMPORTED_POOL', False):
                 try:
                     from utils.luckmail_service import LuckMailService
                     print(f"[{cfg.ts()}] [INFO] 正在检测 LuckMail 邮箱（{mask_email(email)}）是否存活...")

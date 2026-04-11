@@ -24,6 +24,16 @@ def format_docker_url(url: str) -> str:
         url = url.replace("localhost", "host.docker.internal")
     return url
 
+def normalize_proxy_url(url: str) -> str:
+    if not url or not isinstance(url, str):
+        return ""
+    url = url.strip()
+    if not url:
+        return ""
+    if "://" not in url:
+        url = f"http://{url}"
+    return format_docker_url(url)
+
 def deep_update_config(default_dict, user_dict):
     """
     递归检查配置文件
@@ -102,6 +112,9 @@ MC_API_BASE: str = ""
 MC_KEY: str = ""
 
 DEFAULT_PROXY: str = ""
+HTTP_DYNAMIC_PROXY_ENABLE: bool = False
+HTTP_DYNAMIC_PROXY_POOL_SIZE: int = 0
+HTTP_DYNAMIC_PROXY_LIST: list = []
 
 ENABLE_MULTI_THREAD_REG: bool = False
 REG_THREADS: int = 3
@@ -151,6 +164,8 @@ LUCKMAIL_EMAIL_TYPE: str = ""
 LUCKMAIL_VARIANT_MODE: str = ""
 LUCKMAIL_REUSE_PURCHASED: bool = False
 LUCKMAIL_TAG_ID: Optional[int] = None
+LUCKMAIL_USE_IMPORTED_POOL: bool = False
+LUCKMAIL_SPECIFIED_EMAIL: str = ""
 
 DUCKMAIL_API_URL: str = "https://api.duckmail.com"
 DUCKMAIL_DOMAIN: str = ""
@@ -167,6 +182,7 @@ HERO_SMS_API_KEY: str = ""
 HERO_SMS_BASE_URL: str = "https://hero-sms.com/stubs/handler_api.php"
 HERO_SMS_COUNTRY: str = "US"
 HERO_SMS_SERVICE: str = "openai"
+HERO_SMS_USE_PROXY: bool = False
 HERO_SMS_AUTO_PICK_COUNTRY: bool = False
 HERO_SMS_REUSE_PHONE: bool = True
 HERO_SMS_MAX_PRICE: float = 2.0
@@ -202,7 +218,7 @@ def reload_all_configs():
     global FREEMAIL_API_URL, FREEMAIL_API_TOKEN
     global CM_API_URL, CM_ADMIN_EMAIL, CM_ADMIN_PASS
     global MC_API_BASE, MC_KEY
-    global DEFAULT_PROXY
+    global DEFAULT_PROXY, HTTP_DYNAMIC_PROXY_ENABLE, HTTP_DYNAMIC_PROXY_POOL_SIZE, HTTP_DYNAMIC_PROXY_LIST
     global SUB_DOMAIN_LEVEL,RANDOM_SUB_DOMAIN_LEVEL
     global ENABLE_MULTI_THREAD_REG, REG_THREADS, MAX_OTP_RETRIES
     global USE_PROXY_FOR_EMAIL, ENABLE_EMAIL_MASKING
@@ -219,8 +235,9 @@ def reload_all_configs():
     global SUB2API_REMOVE_ON_LIMIT_REACHED, SUB2API_REMOVE_DEAD_ACCOUNTS, SUB2API_ENABLE_TOKEN_REVIVE
     global SUB2API_ACCOUNT_CONCURRENCY, SUB2API_ACCOUNT_LOAD_FACTOR, SUB2API_ACCOUNT_PRIORITY
     global SUB2API_ACCOUNT_RATE_MULTIPLIER, SUB2API_ACCOUNT_GROUP_IDS, SUB2API_ENABLE_WS_MODE
-    global LUCKMAIL_API_KEY,LUCKMAIL_PREFERRED_DOMAIN,LUCKMAIL_EMAIL_TYPE,LUCKMAIL_VARIANT_MODE,LUCKMAIL_REUSE_PURCHASED, LUCKMAIL_TAG_ID
-    global HERO_SMS_ENABLED, HERO_SMS_API_KEY, HERO_SMS_BASE_URL, HERO_SMS_COUNTRY, HERO_SMS_SERVICE
+    global LUCKMAIL_API_KEY,LUCKMAIL_PREFERRED_DOMAIN,LUCKMAIL_EMAIL_TYPE,LUCKMAIL_VARIANT_MODE
+    global LUCKMAIL_REUSE_PURCHASED, LUCKMAIL_TAG_ID, LUCKMAIL_USE_IMPORTED_POOL, LUCKMAIL_SPECIFIED_EMAIL
+    global HERO_SMS_ENABLED, HERO_SMS_API_KEY, HERO_SMS_BASE_URL, HERO_SMS_COUNTRY, HERO_SMS_SERVICE, HERO_SMS_USE_PROXY
     global HERO_SMS_AUTO_PICK_COUNTRY, HERO_SMS_REUSE_PHONE, HERO_SMS_MAX_PRICE
     global HERO_SMS_MIN_BALANCE, HERO_SMS_MAX_TRIES, HERO_SMS_POLL_TIMEOUT_SEC
     global AI_API_BASE, AI_API_KEY, AI_MODEL, AI_ENABLE_PROFILE
@@ -344,7 +361,7 @@ def reload_all_configs():
     MC_API_BASE      = str(_mc.get("api_base", "")).strip().rstrip("/")
     MC_KEY           = _mc.get("key", "")
 
-    DEFAULT_PROXY    = format_docker_url(_c.get("default_proxy", ""))
+    DEFAULT_PROXY    = normalize_proxy_url(_c.get("default_proxy", ""))
 
     ENABLE_MULTI_THREAD_REG = _c.get("enable_multi_thread_reg", False)
     REG_THREADS      = _c.get("reg_threads", 3)
@@ -395,6 +412,18 @@ def reload_all_configs():
     NORMAL_SLEEP_MAX = _normal.get("sleep_max", 30)
     NORMAL_TARGET_COUNT = _normal.get("target_count", 0)
 
+    _http_dynamic_proxy = _c.get("http_dynamic_proxy", {})
+    HTTP_DYNAMIC_PROXY_ENABLE = bool(_http_dynamic_proxy.get("enable", False))
+    HTTP_DYNAMIC_PROXY_POOL_SIZE = safe_int(_http_dynamic_proxy.get("pool_size", REG_THREADS), REG_THREADS, minimum=1)
+    _raw_http_dynamic_list = _http_dynamic_proxy.get("proxy_list", [])
+    if isinstance(_raw_http_dynamic_list, str):
+        _raw_http_dynamic_list = [line.strip() for line in _raw_http_dynamic_list.splitlines() if line.strip()]
+    elif not isinstance(_raw_http_dynamic_list, list):
+        _raw_http_dynamic_list = []
+    HTTP_DYNAMIC_PROXY_LIST = [normalize_proxy_url(p) for p in _raw_http_dynamic_list if normalize_proxy_url(p)]
+    if not DEFAULT_PROXY and HTTP_DYNAMIC_PROXY_LIST:
+        DEFAULT_PROXY = HTTP_DYNAMIC_PROXY_LIST[0]
+
     _clash_conf      = _c.get("clash_proxy_pool", {})
     _clash_enable    = _clash_conf.get("enable", False)
     _clash_pool_mode = _clash_conf.get("pool_mode", False)
@@ -405,6 +434,17 @@ def reload_all_configs():
     if _clash_enable and _clash_pool_mode and WARP_PROXY_LIST:
         for p in WARP_PROXY_LIST:
             PROXY_QUEUE.put(p)
+    elif HTTP_DYNAMIC_PROXY_ENABLE:
+        _dynamic_sources = HTTP_DYNAMIC_PROXY_LIST or ([DEFAULT_PROXY] if DEFAULT_PROXY else [])
+        if _dynamic_sources:
+            if len(_dynamic_sources) == 1:
+                for _ in range(HTTP_DYNAMIC_PROXY_POOL_SIZE):
+                    PROXY_QUEUE.put(_dynamic_sources[0])
+            else:
+                for idx in range(HTTP_DYNAMIC_PROXY_POOL_SIZE):
+                    PROXY_QUEUE.put(_dynamic_sources[idx % len(_dynamic_sources)])
+        else:
+            PROXY_QUEUE.put(DEFAULT_PROXY if DEFAULT_PROXY else None)
     else:
         PROXY_QUEUE.put(DEFAULT_PROXY if DEFAULT_PROXY else None)
     _luckmail        = _c.get("luckmail", {})
@@ -413,6 +453,8 @@ def reload_all_configs():
     LUCKMAIL_EMAIL_TYPE = str(_luckmail.get("email_type") or "ms_graph").strip()
     LUCKMAIL_VARIANT_MODE = str(_luckmail.get("variant_mode") or "").strip()
     LUCKMAIL_REUSE_PURCHASED = bool(_luckmail.get("reuse_purchased", False))
+    LUCKMAIL_USE_IMPORTED_POOL = bool(_luckmail.get("use_imported_pool", False))
+    LUCKMAIL_SPECIFIED_EMAIL = str(_luckmail.get("specified_email") or "").strip().lower()
     _raw_tag_id = _luckmail.get("tag_id")
     try:
         LUCKMAIL_TAG_ID = int(_raw_tag_id) if _raw_tag_id else None
@@ -429,6 +471,7 @@ def reload_all_configs():
     HERO_SMS_BASE_URL = str(_hero_sms_conf.get("base_url", "https://hero-sms.com/stubs/handler_api.php")).strip().rstrip("/")
     HERO_SMS_COUNTRY = _hero_sms_conf.get("country", "US")
     HERO_SMS_SERVICE = _hero_sms_conf.get("service", "dr")
+    HERO_SMS_USE_PROXY = safe_bool(_hero_sms_conf.get("use_proxy", False), default=False)
     HERO_SMS_AUTO_PICK_COUNTRY = _hero_sms_conf.get("auto_pick_country", False)
     HERO_SMS_REUSE_PHONE = _hero_sms_conf.get("reuse_phone", True)
 
@@ -464,12 +507,13 @@ def reload_all_configs():
         "enable": _tg.get("enable", False),
         "token": str(_tg.get("token", "")),
         "chat_id": str(_tg.get("chat_id", "")),
+        "use_proxy": _tg.get("use_proxy", False),
         "mask_email": _tg.get("mask_email", False),
         "mask_password": _tg.get("mask_password", False),
         "template_success": _tg.get("template_success",
-                                    "🎉 <b>注册成功</b>\n⏰ 时间: <code>{time}</code>\n📧 账号: <code>{email}</code>\n🔑 密码: <code>{password}</code>"),
+                                    "🎉 <b>注册成功</b>\n━━━━━━━━━━━━\n⏰ 时间：<code>{time}</code>\n📧 账号：<code>{email}</code>\n🔑 密码：<code>{password}</code>"),
         "template_stop": _tg.get("template_stop",
-                                 "🛑 <b>系统已收到停止指令</b>\n\n📊 <b>最终运行统计</b>：\n成功率: {success_rate}% · 成功: {success}/{target} · 失败: {failed} 次 · 风控拦截: {retries} 次 · 总耗时: {elapsed_time}s · 平均单号: {avg_time}s")
+                                 "🛑 <b>任务已停止</b>\n━━━━━━━━━━━━\n📊 成功率：<code>{success_rate}%</code>\n✅ 成功：<code>{success}/{target}</code>\n❌ 失败：<code>{failed}</code>\n🚧 风控：<code>{retries}</code>\n🔒 密码受阻：<code>{pwd_blocked}</code>\n📱 出现手机：<code>{phone_verify}</code>\n⏱ 总耗时：<code>{elapsed_time}s</code>\n📈 平均单号：<code>{avg_time}s</code>")
     }
 
     _duck = _c.get("duckmail", {})

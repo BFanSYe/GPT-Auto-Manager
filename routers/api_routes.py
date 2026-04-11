@@ -210,7 +210,8 @@ async def stop_task(token: str = Depends(verify_token)):
     try:
         msg = template_str.format(success_rate=success_rate, success=stats['success'], target=target_str,
                                   failed=stats['failed'], retries=stats['retries'], elapsed_time=elapsed_time,
-                                  avg_time=avg_time)
+                                  avg_time=avg_time, pwd_blocked=stats.get('pwd_blocked', 0),
+                                  phone_verify=stats.get('phone_verify', 0))
     except Exception:
         msg = f"⚠️ TG 模板渲染出错：未知的变量格式。\n请检查配置面板中的模板变量是否正确填写。"
 

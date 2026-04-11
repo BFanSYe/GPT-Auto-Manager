@@ -207,6 +207,17 @@ def get_email_and_token(proxies: Any = None) -> tuple:
                 variant_mode=getattr(cfg, 'LUCKMAIL_VARIANT_MODE', "")
             )
 
+            if getattr(cfg, 'LUCKMAIL_USE_IMPORTED_POOL', False):
+                email, order_no = lm_service.get_imported_email_and_order(
+                    specified_email=getattr(cfg, 'LUCKMAIL_SPECIFIED_EMAIL', "")
+                )
+                if email and order_no:
+                    set_last_email(email)
+                    print(f"[{cfg.ts()}] [INFO] LuckMail 私有池成功分配邮箱: ({mask_email(email)})")
+                    return email, order_no
+                print(f"[{cfg.ts()}] [ERROR] LuckMail 私有池分配邮箱失败")
+                return None, None
+
             tag_id = getattr(cfg, 'LUCKMAIL_TAG_ID', None)
             if not tag_id:
                 with luckmail_lock:
@@ -1002,13 +1013,23 @@ def get_oai_code(
                             return code
             elif mode == "luckmail":
                 if not jwt:
-                    print(f"\n[{cfg.ts()}] [ERROR] LuckMail 缺少 token，无法提取验证码！")
+                    missing_name = "订单号" if getattr(cfg, 'LUCKMAIL_USE_IMPORTED_POOL', False) else "token"
+                    print(f"\n[{cfg.ts()}] [ERROR] LuckMail 缺少 {missing_name}，无法提取验证码！")
                     return ""
                 try:
                     from utils.luckmail_service import LuckMailService
-                    lm_service = LuckMailService(api_key=cfg.LUCKMAIL_API_KEY)
+                    lm_service = LuckMailService(
+                        api_key=cfg.LUCKMAIL_API_KEY,
+                        preferred_domain=getattr(cfg, 'LUCKMAIL_PREFERRED_DOMAIN', ""),
+                        proxies=mail_proxies,
+                        email_type=getattr(cfg, 'LUCKMAIL_EMAIL_TYPE', "ms_graph"),
+                        variant_mode=getattr(cfg, 'LUCKMAIL_VARIANT_MODE', "")
+                    )
 
-                    code = lm_service.get_code(jwt)
+                    if getattr(cfg, 'LUCKMAIL_USE_IMPORTED_POOL', False):
+                        code = lm_service.get_order_code(jwt)
+                    else:
+                        code = lm_service.get_code(jwt)
                     if code:
                         processed_mail_ids.add(jwt)
                         print(f"\n[{cfg.ts()}] [SUCCESS] LuckMail ({mask_email(email)})邮箱提取验证码成功: {code}")
