@@ -54,6 +54,10 @@ createApp({
             blacklistStr: "",
             warpListStr: "",
             httpDynamicListStr: "",
+            clashPoolSubUrl: '',
+            clashPoolStatusOutput: '',
+            clashPoolInfo: null,
+            isClashPoolUpdating: false,
             accounts: [],
             selectedAccounts: [],
 			currentPage: 1,
@@ -78,7 +82,7 @@ createApp({
                 ai_base: true, cluster_url: true, proxy: true, clash_api: true,
                 clash_test: true, tg_token: false, tg_chatid: false, cpa_url: true, sub_url: true,
                 cluster_secret: false, hero_key: false, duck_token: false, duck_cookie: false,
-                luckmail: false
+                luckmail: false, clash_sub: false
             },
 
             toasts: [],
@@ -202,6 +206,9 @@ createApp({
             this.initSSE();
             this.startStatsPolling();
             this.checkUpdate();
+            if (this.currentTab === 'proxy') {
+                this.fetchClashPoolInfo();
+            }
         },
         startStatsPolling() {
             if(this.statsTimer) clearTimeout(this.statsTimer);
@@ -307,6 +314,54 @@ createApp({
                 if (this.config.cluster_secret === undefined) this.config.cluster_secret = 'wenfxl666';
             } catch (e) {}
         },
+        async fetchClashPoolInfo() {
+            try {
+                const res = await this.authFetch('/api/clash_pool/info');
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.clashPoolInfo = data.data || {};
+                    this.clashPoolSubUrl = (data.data && data.data.sub_url) ? data.data.sub_url : '';
+                    this.clashPoolStatusOutput = (data.data && data.data.status_output) ? data.data.status_output : '';
+                } else {
+                    this.showToast(data.message || '读取 Clash 订阅信息失败', 'warning');
+                }
+            } catch (e) {
+                this.showToast('读取 Clash 订阅信息失败', 'error');
+            }
+        },
+        async updateClashPoolSubscription() {
+            const subUrl = (this.clashPoolSubUrl || '').trim();
+            if (!subUrl) {
+                this.showToast('请先填写 Clash 订阅链接', 'warning');
+                return;
+            }
+            const confirmed = await this.customConfirm('确认更新 Clash 订阅并重载整个代理池吗？');
+            if (!confirmed) return;
+            this.isClashPoolUpdating = true;
+            try {
+                const res = await this.authFetch('/api/clash_pool/update_subscription', {
+                    method: 'POST',
+                    body: JSON.stringify({ sub_url: subUrl })
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.clashPoolStatusOutput = data.status_output || data.output || '';
+                    if (this.clashPoolInfo) {
+                        this.clashPoolInfo.sub_url = subUrl;
+                        this.clashPoolInfo.status_output = this.clashPoolStatusOutput;
+                    }
+                    this.showToast(data.message || 'Clash 订阅更新成功', 'success');
+                    await this.fetchClashPoolInfo();
+                } else {
+                    this.clashPoolStatusOutput = data.output || data.status_output || this.clashPoolStatusOutput;
+                    this.showToast(data.message || 'Clash 订阅更新失败', 'error');
+                }
+            } catch (e) {
+                this.showToast('Clash 订阅更新失败，请检查后端日志', 'error');
+            } finally {
+                this.isClashPoolUpdating = false;
+            }
+        },
         async saveConfig() {
             try {
                 if(this.config.clash_proxy_pool) {
@@ -374,6 +429,9 @@ createApp({
 			if (tabId === 'email') {
 				this.fetchConfig();
 			}
+            if (tabId === 'proxy') {
+                this.fetchClashPoolInfo();
+            }
 			if (tabId === 'cloud') {
 			    this.fetchCloudAccounts();
 			}

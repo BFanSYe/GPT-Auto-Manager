@@ -8,6 +8,7 @@ import traceback
 import threading
 import sys
 import subprocess
+import shlex
 import yaml
 import httpx
 from fastapi import APIRouter, Depends, Header, Query, Request, WebSocket, HTTPException
@@ -32,6 +33,10 @@ CONFIG_PATH = os.path.join(BASE_DIR, "data", "config.yaml")
 GMAIL_CLIENT_SECRETS = os.path.join(BASE_DIR, "data", "credentials.json")
 GMAIL_TOKEN_PATH = os.path.join(BASE_DIR, "data", "token.json")
 GMAIL_VERIFIER_PATH = os.path.join(BASE_DIR, "data", "temp_verifier.txt")
+CLASH_POOL_ROOT = "/opt/mihomo-pool"
+CLASH_POOL_ENV_PATH = os.path.join(CLASH_POOL_ROOT, "pool.env")
+CLASH_POOL_UPDATE_SCRIPT = os.path.join(CLASH_POOL_ROOT, "update_pool.sh")
+CLASH_POOL_STATUS_SCRIPT = os.path.join(CLASH_POOL_ROOT, "status_pool.sh")
 
 class DummyArgs:
     def __init__(self, proxy=None, once=False):
@@ -75,6 +80,9 @@ class ClusterReportReq(BaseModel): node_name: str; secret: str; stats: dict; log
 class ClusterControlReq(BaseModel): node_name: str; action: str
 
 
+class ClashPoolUpdateReq(BaseModel): sub_url: str
+
+
 # ==========================================
 # 辅助函数
 # ==========================================
@@ -87,6 +95,59 @@ def get_web_password():
     except Exception:
         pass
     return "admin"
+
+
+def _read_clash_pool_env() -> dict:
+    if not os.path.exists(CLASH_POOL_ENV_PATH):
+        raise FileNotFoundError(f"未找到 {CLASH_POOL_ENV_PATH}")
+    env_map = {}
+    with open(CLASH_POOL_ENV_PATH, "r", encoding="utf-8") as f:
+        for raw in f:
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip()
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+                value = value[1:-1]
+            env_map[key] = value
+    return env_map
+
+
+def _write_clash_pool_env(env_map: dict) -> None:
+    primary_keys = ["COUNT", "SUB_URL", "SECRET", "IMAGE"]
+    lines = []
+    for key in primary_keys:
+        if key in env_map:
+            lines.append(f"{key}={shlex.quote(str(env_map[key]))}")
+    for key, value in env_map.items():
+        if key not in primary_keys:
+            lines.append(f"{key}={shlex.quote(str(value))}")
+    with open(CLASH_POOL_ENV_PATH, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines).rstrip() + "\n")
+
+
+def _run_clash_pool_script(script_path: str, timeout: int = 300) -> tuple[int, str]:
+    proc = subprocess.run(
+        ["bash", script_path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        timeout=timeout,
+        cwd=CLASH_POOL_ROOT if os.path.isdir(CLASH_POOL_ROOT) else None,
+    )
+    return proc.returncode, proc.stdout or ""
+
+
+def _get_clash_pool_status_output() -> str:
+    if not os.path.exists(CLASH_POOL_STATUS_SCRIPT):
+        return ""
+    try:
+        _, output = _run_clash_pool_script(CLASH_POOL_STATUS_SCRIPT, timeout=20)
+        return output.strip()
+    except Exception as e:
+        return f"状态读取失败: {e}"
 
 def parse_cpa_usage_to_details(raw_usage: dict) -> dict:
     details = {"is_cpa": True}
@@ -309,6 +370,64 @@ async def save_config(new_config: dict, token: str = Depends(verify_token)):
         return {"status": "success", "message": "✅ 配置已成功保存！"}
     except Exception as e:
         return {"status": "error", "message": f"❌ 保存失败: {str(e)}"}
+
+
+@router.get("/api/clash_pool/info")
+def get_clash_pool_info(token: str = Depends(verify_token)):
+    try:
+        env_map = _read_clash_pool_env()
+        return {
+            "status": "success",
+            "data": {
+                "sub_url": env_map.get("SUB_URL", ""),
+                "count": env_map.get("COUNT", ""),
+                "image": env_map.get("IMAGE", ""),
+                "status_output": _get_clash_pool_status_output(),
+            }
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"读取 Clash 订阅信息失败: {e}"}
+
+
+@router.post("/api/clash_pool/update_subscription")
+def update_clash_pool_subscription(req: ClashPoolUpdateReq, token: str = Depends(verify_token)):
+    try:
+        sub_url = str(req.sub_url or "").strip()
+        if not sub_url:
+            return {"status": "error", "message": "订阅链接不能为空"}
+        if not os.path.exists(CLASH_POOL_UPDATE_SCRIPT):
+            return {"status": "error", "message": f"未找到更新脚本: {CLASH_POOL_UPDATE_SCRIPT}"}
+
+        env_map = _read_clash_pool_env()
+        env_map["SUB_URL"] = sub_url
+        _write_clash_pool_env(env_map)
+
+        code, output = _run_clash_pool_script(CLASH_POOL_UPDATE_SCRIPT, timeout=420)
+        tail_lines = "\n".join((output or "").strip().splitlines()[-80:])
+        status_output = _get_clash_pool_status_output()
+        if code != 0:
+            return {
+                "status": "error",
+                "message": f"订阅已写入，但更新脚本执行失败 (exit={code})",
+                "output": tail_lines,
+                "status_output": status_output,
+            }
+        return {
+            "status": "success",
+            "message": "✅ Clash 订阅已更新并重载代理池！",
+            "output": tail_lines,
+            "status_output": status_output,
+            "data": {
+                "sub_url": sub_url,
+                "count": env_map.get("COUNT", ""),
+                "image": env_map.get("IMAGE", ""),
+            }
+        }
+    except subprocess.TimeoutExpired as e:
+        partial = ((e.stdout or "") + "\n" + (e.stderr or "")).strip()
+        return {"status": "error", "message": "更新脚本执行超时", "output": partial[-4000:]}
+    except Exception as e:
+        return {"status": "error", "message": f"Clash 订阅更新失败: {e}"}
 
 
 @router.post("/api/config/add_wildcard_dns")
