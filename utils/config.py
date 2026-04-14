@@ -218,7 +218,7 @@ TG_BOT: dict = {"enable": False, "token": "", "chat_id": ""}
 
 CLUSTER_NODE_NAME: str = ""
 CLUSTER_MASTER_URL: str = ""
-CLUSTER_SECRET: str = "wenfxl666"
+CLUSTER_SECRET: str = "change-me-cluster-secret"
 TEMPORAM_COOKIE: str = ""
 REG_MODE: str = "protocol"
 
@@ -450,7 +450,13 @@ def reload_all_configs():
     _clash_conf      = _c.get("clash_proxy_pool", {})
     _clash_enable    = _clash_conf.get("enable", False)
     _clash_pool_mode = _clash_conf.get("pool_mode", False)
-    WARP_PROXY_LIST  = _c.get("warp_proxy_list", [])
+    _raw_warp_proxy_list = _c.get("warp_proxy_list", [])
+    if isinstance(_raw_warp_proxy_list, str):
+        _raw_warp_proxy_list = [line.strip() for line in _raw_warp_proxy_list.splitlines() if line.strip()]
+    elif not isinstance(_raw_warp_proxy_list, list):
+        _raw_warp_proxy_list = []
+    WARP_PROXY_LIST = [normalize_proxy_url(p) for p in _raw_warp_proxy_list if normalize_proxy_url(p)]
+    _clash_test_proxy = normalize_proxy_url(_clash_conf.get("test_proxy_url", "http://127.0.0.1:7890"))
 
     # PROXY_QUEUE 是调度层统一消费的代理通道队列。
     # 优先级：
@@ -459,9 +465,15 @@ def reload_all_configs():
     # 3. 单条 default_proxy / 直连
     with PROXY_QUEUE.mutex:
         PROXY_QUEUE.queue.clear()
-    if _clash_enable and _clash_pool_mode and WARP_PROXY_LIST:
-        for p in WARP_PROXY_LIST:
-            PROXY_QUEUE.put(p)
+    if _clash_enable and _clash_pool_mode:
+        if WARP_PROXY_LIST:
+            for p in WARP_PROXY_LIST:
+                PROXY_QUEUE.put(p)
+        elif _clash_test_proxy:
+            print(f"[{ts()}] [WARNING] Clash 独享池已开启，但 warp_proxy_list 为空，回退使用单条 test_proxy_url 通道: {_clash_test_proxy}")
+            PROXY_QUEUE.put(_clash_test_proxy)
+        else:
+            print(f"[{ts()}] [ERROR] Clash 独享池已开启，但未配置任何 warp_proxy_list 或 test_proxy_url，当前代理池不可用。")
     elif HTTP_DYNAMIC_PROXY_ENABLE:
         _dynamic_sources = HTTP_DYNAMIC_PROXY_LIST or ([DEFAULT_PROXY] if DEFAULT_PROXY else [])
         if _dynamic_sources:
@@ -557,7 +569,7 @@ def reload_all_configs():
 
     CLUSTER_NODE_NAME = str(_c.get("cluster_node_name", "")).strip()
     CLUSTER_MASTER_URL = str(_c.get("cluster_master_url", "")).strip().rstrip("/")
-    CLUSTER_SECRET = str(_c.get("cluster_secret", "wenfxl666")).strip()
+    CLUSTER_SECRET = str(_c.get("cluster_secret", "change-me-cluster-secret")).strip()
     REG_MODE = str(_c.get("reg_mode", "protocol")).strip().lower()
 
     _temporam = _c.get("temporam", {})

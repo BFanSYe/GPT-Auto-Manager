@@ -3,12 +3,14 @@ import time
 import json
 import secrets
 import re
+import random
 import asyncio
 import traceback
 import threading
 import sys
 import subprocess
 import shlex
+import urllib.parse
 import yaml
 import httpx
 from fastapi import APIRouter, Depends, Header, Query, Request, WebSocket, HTTPException
@@ -188,6 +190,547 @@ def _get_clash_pool_group_candidates(env_map: dict | None = None) -> tuple[list[
         return groups, ""
     except Exception as e:
         return [], f"读取策略组失败: {e}"
+
+
+def _sanitize_clash_sub_url(sub_url: str) -> str:
+    value = str(sub_url or "").strip().strip("'\"")
+    return re.sub(r"\s+", "", value)
+
+
+def _replace_query_param(url: str, key: str, value: str) -> str:
+    parsed = urllib.parse.urlsplit(url)
+    items = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    out = []
+    replaced = False
+    for k, v in items:
+        if k == key:
+            if not replaced:
+                out.append((k, value))
+                replaced = True
+            continue
+        out.append((k, v))
+    if not replaced:
+        out.append((key, value))
+    return urllib.parse.urlunsplit(parsed._replace(query=urllib.parse.urlencode(out, doseq=True)))
+
+
+def _build_clash_sub_url_candidates(sub_url: str) -> list[str]:
+    normalized = _sanitize_clash_sub_url(sub_url)
+    if not normalized:
+        return []
+    candidates = [normalized]
+    parsed = urllib.parse.urlsplit(normalized)
+    query_map = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
+    current_flag = str(query_map.get("flag") or "").strip().lower()
+
+    if current_flag != "mihomo":
+        candidates.append(_replace_query_param(normalized, "flag", "mihomo"))
+    if not current_flag:
+        candidates.append(_replace_query_param(normalized, "flag", "clash-meta"))
+        candidates.append(_replace_query_param(normalized, "flag", "clash"))
+
+    seen = set()
+    ordered = []
+    for item in candidates:
+        if item and item not in seen:
+            seen.add(item)
+            ordered.append(item)
+    return ordered
+
+
+def _classify_sub_payload(text: str) -> str:
+    body = str(text or "").strip()
+    if not body:
+        return "empty"
+    lowered = body[:256].lower()
+    if lowered.startswith("<!doctype html") or lowered.startswith("<html"):
+        return "html"
+    if any(token in body for token in ["proxy-groups:", "proxy-providers:", "\nproxies:", "\nrules:", "mixed-port:"]):
+        return "yaml"
+    compact = re.sub(r"\s+", "", body)
+    if "://" in body and any(proto in body for proto in ["ss://", "vmess://", "vless://", "trojan://", "hysteria://", "hy2://", "tuic://"]):
+        return "raw-uri"
+    if len(compact) > 128 and re.fullmatch(r"[A-Za-z0-9+/=_-]+", compact or ""):
+        return "base64"
+    return "unknown"
+
+
+def _probe_clash_sub_url(sub_url: str) -> dict:
+    result = {
+        "url": sub_url,
+        "ok": False,
+        "reason": "",
+        "http_status": None,
+        "payload_kind": "",
+        "proxy_count": 0,
+        "provider_count": 0,
+        "group_count": 0,
+        "group_names": [],
+        "tls_insecure_fallback": False,
+    }
+    last_error = ""
+
+    for verify_tls in (True, False):
+        if verify_tls is False and result["http_status"] is not None:
+            break
+        try:
+            resp = httpx.get(
+                sub_url,
+                timeout=25.0,
+                follow_redirects=True,
+                verify=verify_tls,
+                headers={"User-Agent": "openai-cpa/subscription-probe"},
+            )
+            result["http_status"] = resp.status_code
+            if verify_tls is False:
+                result["tls_insecure_fallback"] = True
+            if resp.status_code != 200:
+                result["reason"] = f"HTTP {resp.status_code}"
+                return result
+
+            text = resp.text or ""
+            result["payload_kind"] = _classify_sub_payload(text)
+            if result["payload_kind"] in {"base64", "raw-uri"}:
+                result["reason"] = "返回的是通用订阅串，不是 Mihomo/Clash YAML"
+                return result
+            if result["payload_kind"] == "html":
+                result["reason"] = "返回的是 HTML 页面，不是订阅配置"
+                return result
+            if result["payload_kind"] == "empty":
+                result["reason"] = "订阅内容为空"
+                return result
+
+            try:
+                data = yaml.safe_load(text)
+            except Exception as e:
+                result["reason"] = f"YAML 解析失败: {e}"
+                return result
+
+            if not isinstance(data, dict):
+                result["reason"] = "订阅返回内容不是 YAML 字典结构"
+                return result
+
+            proxies = data.get("proxies") or []
+            proxy_providers = data.get("proxy-providers") or {}
+            groups = data.get("proxy-groups") or []
+
+            if isinstance(proxies, list):
+                result["proxy_count"] = len(proxies)
+            elif isinstance(proxies, dict):
+                result["proxy_count"] = len(proxies)
+
+            if isinstance(proxy_providers, dict):
+                result["provider_count"] = len(proxy_providers)
+
+            if isinstance(groups, list):
+                result["group_count"] = len(groups)
+                result["group_names"] = [
+                    str(item.get("name") or "").strip()
+                    for item in groups
+                    if isinstance(item, dict) and str(item.get("name") or "").strip()
+                ]
+
+            if result["group_count"] <= 0:
+                result["reason"] = "订阅未包含任何策略组"
+                return result
+            if result["proxy_count"] <= 0 and result["provider_count"] <= 0:
+                result["reason"] = "订阅中未包含任何节点或代理提供器"
+                return result
+
+            result["ok"] = True
+            if result["tls_insecure_fallback"]:
+                result["reason"] = "已使用 TLS 非校验回退探测成功"
+            return result
+        except Exception as e:
+            last_error = str(e)
+            if verify_tls is False:
+                break
+            continue
+
+    result["reason"] = last_error or "订阅探测失败"
+    return result
+
+
+def _resolve_clash_sub_url(sub_url: str) -> tuple[dict | None, list[dict]]:
+    probes = []
+    for candidate in _build_clash_sub_url_candidates(sub_url):
+        probe = _probe_clash_sub_url(candidate)
+        probes.append(probe)
+        if probe.get("ok"):
+            return probe, probes
+    return None, probes
+
+
+def _get_clash_pool_api_urls(env_map: dict | None = None) -> list[str]:
+    env_map = env_map or _read_clash_pool_env()
+    try:
+        count = max(1, int(env_map.get("COUNT") or 1))
+    except Exception:
+        count = 1
+    return [f"http://host.docker.internal:{42000 + i}" for i in range(1, count + 1)]
+
+
+def _get_clash_pool_config_path(env_map: dict | None = None) -> str:
+    env_map = env_map or _read_clash_pool_env()
+    try:
+        count = max(1, int(env_map.get("COUNT") or 1))
+    except Exception:
+        count = 1
+    for idx in range(1, count + 1):
+        path = os.path.join(CLASH_POOL_ROOT, f"config_{idx}", "config.yaml")
+        if os.path.exists(path):
+            return path
+    return os.path.join(CLASH_POOL_ROOT, "config_1", "config.yaml")
+
+
+def _extract_default_route_groups(env_map: dict | None = None) -> list[str]:
+    try:
+        config_path = _get_clash_pool_config_path(env_map)
+        if not os.path.exists(config_path):
+            return []
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        rules = data.get("rules") or []
+        for raw in reversed(rules):
+            if not isinstance(raw, str):
+                continue
+            parts = [str(x).strip().strip("'\"") for x in raw.split(",")]
+            if len(parts) >= 2 and parts[0].upper() in {"MATCH", "FINAL"}:
+                return [parts[1]]
+    except Exception:
+        pass
+    return []
+
+
+def _find_actual_group_name(proxies: dict, keyword: str) -> str:
+    wanted = str(keyword or "").strip()
+    wanted_lower = wanted.lower()
+    ai_hints = ["chatgpt", "openai", "copilot", "claude", "anthropic", "ai"]
+    fallback_name = ""
+    fallback_score = None
+    for key, meta in proxies.items():
+        if not isinstance(meta, dict):
+            continue
+        all_items = meta.get("all")
+        if not isinstance(all_items, list):
+            continue
+        name = str(key or "").strip()
+        if not name:
+            continue
+        leaf_count = 0
+        child_group_count = 0
+        for item in all_items:
+            child = str(item or "").strip()
+            if not child:
+                continue
+            child_meta = proxies.get(child)
+            if isinstance(child_meta, dict) and isinstance(child_meta.get("all"), list):
+                child_group_count += 1
+            else:
+                leaf_count += 1
+
+        score = [0, 0, leaf_count, -child_group_count, len(all_items), -len(name)]
+        if wanted and name == wanted:
+            score[0] = 100
+        elif wanted and wanted_lower == name.lower():
+            score[0] = 95
+        elif wanted and wanted_lower in name.lower():
+            score[0] = 90
+        elif any(hint in name.lower() for hint in ai_hints):
+            score[0] = 70
+        elif child_group_count == 0:
+            score[0] = 50
+
+        if wanted and any(wanted_lower in str(item or "").strip().lower() for item in all_items):
+            score[1] += 5
+        if any(hint in name.lower() for hint in ai_hints):
+            score[1] += 3
+
+        score_tuple = tuple(score)
+        if fallback_score is None or score_tuple > fallback_score:
+            fallback_score = score_tuple
+            fallback_name = name
+    return fallback_name
+
+
+def _find_group_path(proxies: dict, start_group: str, target_group: str) -> list[str]:
+    start = str(start_group or "").strip()
+    target = str(target_group or "").strip()
+    if not start or not target:
+        return []
+    if start == target:
+        return [start]
+
+    queue_items: list[tuple[str, list[str]]] = [(start, [start])]
+    visited = {start}
+
+    while queue_items:
+        current, path = queue_items.pop(0)
+        meta = proxies.get(current)
+        if not isinstance(meta, dict):
+            continue
+        all_items = meta.get("all")
+        if not isinstance(all_items, list):
+            continue
+        for raw in all_items:
+            child = str(raw or "").strip()
+            if not child:
+                continue
+            if child == target:
+                return path + [target]
+            child_meta = proxies.get(child)
+            if isinstance(child_meta, dict) and isinstance(child_meta.get("all"), list) and child not in visited:
+                visited.add(child)
+                queue_items.append((child, path + [child]))
+    return []
+
+
+def _filter_assignable_nodes(proxies: dict, group_name: str, blacklist: list[str]) -> list[str]:
+    group_meta = proxies.get(group_name) if isinstance(proxies, dict) else None
+    all_nodes = group_meta.get("all", []) if isinstance(group_meta, dict) else []
+    valid_nodes = []
+    for raw in all_nodes:
+        node_name = str(raw or "").strip()
+        if not node_name or node_name == group_name:
+            continue
+        node_meta = proxies.get(node_name, {})
+        if isinstance(node_meta, dict) and isinstance(node_meta.get("all"), list):
+            continue
+        upper_name = node_name.upper()
+        if any(str(flag or "").strip().upper() in upper_name for flag in blacklist):
+            continue
+        valid_nodes.append(node_name)
+    return valid_nodes
+
+
+def _align_default_route_group(api_url: str, headers: dict, proxies_payload: dict, default_group: str, target_group: str) -> tuple[list[dict], str]:
+    path = _find_group_path(proxies_payload, default_group, target_group)
+    if not path:
+        return [], f"默认路由组 {default_group} 无法到达 {target_group}"
+    if len(path) < 2:
+        return [], ""
+
+    ops = []
+    for idx in range(len(path) - 1):
+        parent = path[idx]
+        child = path[idx + 1]
+        try:
+            resp = httpx.put(
+                f"{api_url}/proxies/{urllib.parse.quote(parent, safe='')}",
+                headers=headers,
+                json={"name": child},
+                timeout=8.0,
+            )
+            if resp.status_code == 204:
+                ops.append({"group": parent, "select": child, "ok": True})
+            else:
+                ops.append({"group": parent, "select": child, "ok": False, "status": resp.status_code})
+        except Exception as e:
+            ops.append({"group": parent, "select": child, "ok": False, "error": str(e)})
+    failed = [x for x in ops if not x.get("ok")]
+    if failed:
+        return ops, f"默认路由组对齐失败 {len(failed)} 项"
+    return ops, ""
+
+
+def _sync_clash_group_name(actual_group_name: str) -> dict:
+    actual = str(actual_group_name or "").strip()
+    if not actual:
+        return {"updated": False, "before": "", "after": ""}
+
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            conf = yaml.safe_load(f) or {}
+        clash_conf = conf.setdefault("clash_proxy_pool", {})
+        before = str(clash_conf.get("group_name") or "").strip()
+        if before == actual:
+            return {"updated": False, "before": before, "after": actual}
+        clash_conf["group_name"] = actual
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            yaml.dump(conf, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        try:
+            reload_all_configs()
+        except Exception:
+            pass
+        return {"updated": True, "before": before, "after": actual}
+    except Exception as e:
+        return {"updated": False, "before": "", "after": actual, "error": str(e)}
+
+
+def _rollback_clash_pool_update(previous_env: dict) -> tuple[int, str]:
+    _write_clash_pool_env(previous_env)
+    return _run_clash_pool_script(CLASH_POOL_UPDATE_SCRIPT, timeout=420)
+
+
+def _spread_clash_pool_nodes(env_map: dict | None = None) -> tuple[list[dict], str]:
+    """订阅更新后，为每个 Mihomo 实例尽量分配不同节点，避免全都落在同一出口。"""
+    try:
+        env_map = env_map or _read_clash_pool_env()
+        secret = str(env_map.get("SECRET") or "").strip()
+        headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+        api_urls = _get_clash_pool_api_urls(env_map)
+        group_keyword = str(getattr(cfg, "_c", {}).get("clash_proxy_pool", {}).get("group_name", "") or "").strip()
+        blacklist = getattr(cfg, "_c", {}).get("clash_proxy_pool", {}).get("blacklist", []) or []
+        default_route_groups = _extract_default_route_groups(env_map)
+        if not isinstance(blacklist, list):
+            blacklist = []
+
+        proxies_payload = None
+        group_name = ""
+        last_err = ""
+
+        for _ in range(20):
+            try:
+                resp = httpx.get(f"{api_urls[0]}/proxies", headers=headers, timeout=8.0)
+                if resp.status_code == 200:
+                    proxies_payload = resp.json().get("proxies") or {}
+                    group_name = _find_actual_group_name(proxies_payload, group_keyword)
+                    if group_name:
+                        break
+                    last_err = f"未找到策略组关键词: {group_keyword or '（空）'}"
+                else:
+                    last_err = f"HTTP {resp.status_code}"
+            except Exception as e:
+                last_err = str(e)
+            time.sleep(1.0)
+
+        if not isinstance(proxies_payload, dict) or not group_name:
+            return [], f"策略组分流失败: {last_err or '未读取到代理信息'}"
+
+        valid_nodes = _filter_assignable_nodes(proxies_payload, group_name, blacklist)
+        if not valid_nodes:
+            return [], f"策略组 {group_name} 下无可分配节点（可能被黑名单过滤空）"
+
+        random.shuffle(valid_nodes)
+        assigned = []
+        encoded_group = urllib.parse.quote(group_name, safe="")
+        for idx, api_url in enumerate(api_urls):
+            node_name = valid_nodes[idx % len(valid_nodes)]
+            try:
+                switch_resp = httpx.put(
+                    f"{api_url}/proxies/{encoded_group}",
+                    headers=headers,
+                    json={"name": node_name},
+                    timeout=8.0,
+                )
+                if switch_resp.status_code == 204:
+                    align_ops = []
+                    align_error = ""
+                    for root_group in default_route_groups:
+                        ops, err = _align_default_route_group(api_url, headers, proxies_payload, root_group, group_name)
+                        if ops:
+                            align_ops.extend(ops)
+                        if err and not align_error:
+                            align_error = err
+                    assigned.append({
+                        "api": api_url,
+                        "group": group_name,
+                        "node": node_name,
+                        "ok": True if not align_error else False,
+                        "route_align": align_ops,
+                        "route_group": default_route_groups,
+                        "route_error": align_error
+                    })
+                else:
+                    assigned.append({"api": api_url, "group": group_name, "node": node_name, "ok": False, "status": switch_resp.status_code})
+            except Exception as e:
+                assigned.append({"api": api_url, "group": group_name, "node": node_name, "ok": False, "error": str(e)})
+
+        failed = [x for x in assigned if not x.get("ok")]
+        if failed:
+            return assigned, f"策略组分流部分失败，共 {len(failed)} 个实例未成功切换"
+        return assigned, ""
+    except Exception as e:
+        return [], f"策略组分流异常: {e}"
+
+
+def _inspect_clash_pool_runtime(env_map: dict | None = None) -> tuple[dict, str]:
+    try:
+        env_map = env_map or _read_clash_pool_env()
+        secret = str(env_map.get("SECRET") or "").strip()
+        headers = {"Authorization": f"Bearer {secret}"} if secret else {}
+        api_urls = _get_clash_pool_api_urls(env_map)
+        default_route_groups = _extract_default_route_groups(env_map)
+        group_keyword = str(getattr(cfg, "_c", {}).get("clash_proxy_pool", {}).get("group_name", "") or "").strip()
+
+        runtime = {
+            "group_keyword": group_keyword,
+            "actual_group_name": "",
+            "default_route_groups": default_route_groups,
+            "effective_sub_url": str(env_map.get("SUB_URL") or "").strip(),
+            "instance_total": len(api_urls),
+            "instance_ok_count": 0,
+            "aligned_count": 0,
+            "all_aligned": None,
+            "instances": [],
+        }
+        errors = []
+
+        for idx, api_url in enumerate(api_urls, start=1):
+            item = {
+                "slot": idx,
+                "api": api_url,
+                "ok": False,
+                "group": "",
+                "current_node": "",
+                "route_aligned": None,
+                "route_states": [],
+                "error": "",
+            }
+            try:
+                resp = httpx.get(f"{api_url}/proxies", headers=headers, timeout=8.0)
+                if resp.status_code != 200:
+                    item["error"] = f"HTTP {resp.status_code}"
+                    errors.append(f"{idx}号机 {item['error']}")
+                    runtime["instances"].append(item)
+                    continue
+
+                proxies_payload = resp.json().get("proxies") or {}
+                actual_group_name = _find_actual_group_name(proxies_payload, group_keyword)
+                current_node = str((proxies_payload.get(actual_group_name) or {}).get("now") or "").strip() if actual_group_name else ""
+                route_aligned = True if default_route_groups and actual_group_name else None
+                route_states = []
+
+                for root_group in default_route_groups:
+                    root_meta = proxies_payload.get(root_group) or {}
+                    root_now = str(root_meta.get("now") or "").strip()
+                    path = _find_group_path(proxies_payload, root_group, actual_group_name) if actual_group_name else []
+                    aligned = bool(path) and all(
+                        str((proxies_payload.get(path[path_idx]) or {}).get("now") or "").strip() == path[path_idx + 1]
+                        for path_idx in range(len(path) - 1)
+                    )
+                    if route_aligned is not None:
+                        route_aligned = route_aligned and aligned
+                    route_states.append({
+                        "group": root_group,
+                        "now": root_now,
+                        "path": path,
+                        "aligned": aligned,
+                    })
+
+                item.update({
+                    "ok": True,
+                    "group": actual_group_name,
+                    "current_node": current_node,
+                    "route_aligned": route_aligned,
+                    "route_states": route_states,
+                })
+                if actual_group_name and not runtime["actual_group_name"]:
+                    runtime["actual_group_name"] = actual_group_name
+                runtime["instance_ok_count"] += 1
+                if route_aligned is True:
+                    runtime["aligned_count"] += 1
+            except Exception as e:
+                item["error"] = str(e)
+                errors.append(f"{idx}号机 {e}")
+            runtime["instances"].append(item)
+
+        if default_route_groups:
+            runtime["all_aligned"] = runtime["aligned_count"] == runtime["instance_ok_count"] and runtime["instance_ok_count"] > 0
+
+        return runtime, "；".join(errors[:5])
+    except Exception as e:
+        return {}, f"读取 Clash 运行态失败: {e}"
 
 def parse_cpa_usage_to_details(raw_usage: dict) -> dict:
     details = {"is_cpa": True}
@@ -426,15 +969,19 @@ def get_clash_pool_info(token: str = Depends(verify_token)):
     try:
         env_map = _read_clash_pool_env()
         group_candidates, group_error = _get_clash_pool_group_candidates(env_map)
+        runtime_status, runtime_error = _inspect_clash_pool_runtime(env_map)
         return {
             "status": "success",
             "data": {
                 "sub_url": env_map.get("SUB_URL", ""),
+                "effective_sub_url": env_map.get("SUB_URL", ""),
                 "count": env_map.get("COUNT", ""),
                 "image": env_map.get("IMAGE", ""),
                 "status_output": _get_clash_pool_status_output(),
                 "group_candidates": group_candidates,
                 "group_error": group_error,
+                "runtime_status": runtime_status,
+                "runtime_error": runtime_error,
             }
         }
     except Exception as e:
@@ -445,38 +992,135 @@ def get_clash_pool_info(token: str = Depends(verify_token)):
 def update_clash_pool_subscription(req: ClashPoolUpdateReq, token: str = Depends(verify_token)):
     """更新订阅链接并执行代理池刷新脚本。"""
     try:
-        sub_url = str(req.sub_url or "").strip()
+        sub_url = _sanitize_clash_sub_url(req.sub_url)
         if not sub_url:
             return {"status": "error", "message": "订阅链接不能为空"}
         if not os.path.exists(CLASH_POOL_UPDATE_SCRIPT):
             return {"status": "error", "message": f"未找到更新脚本: {CLASH_POOL_UPDATE_SCRIPT}"}
 
+        resolved_probe, probe_history = _resolve_clash_sub_url(sub_url)
+        if not resolved_probe:
+            reason = "；".join(
+                f"{item.get('url')} -> {item.get('reason') or '失败'}"
+                for item in probe_history
+            ) or "未找到可用的 Mihomo/Clash 订阅入口"
+            return {
+                "status": "error",
+                "message": f"订阅探测失败：{reason}",
+                "probe_history": probe_history,
+            }
+
+        effective_sub_url = str(resolved_probe.get("url") or sub_url).strip()
         env_map = _read_clash_pool_env()
-        env_map["SUB_URL"] = sub_url
+        previous_env = dict(env_map)
+        env_map["SUB_URL"] = effective_sub_url
         _write_clash_pool_env(env_map)
 
         code, output = _run_clash_pool_script(CLASH_POOL_UPDATE_SCRIPT, timeout=420)
         tail_lines = "\n".join((output or "").strip().splitlines()[-80:])
         status_output = _get_clash_pool_status_output()
         group_candidates, group_error = _get_clash_pool_group_candidates(env_map)
+        assigned_nodes, assign_error = _spread_clash_pool_nodes(env_map)
+
+        should_rollback = bool(code != 0 or (not assigned_nodes and assign_error))
+        actual_group_name = next((str(item.get("group") or "").strip() for item in assigned_nodes if str(item.get("group") or "").strip()), "")
+        group_sync = {"updated": False, "before": "", "after": ""}
+
+        rollback_output = ""
+        rollback_code = None
+        if should_rollback:
+            try:
+                rollback_code, rollback_output = _rollback_clash_pool_update(previous_env)
+            except Exception as rollback_error:
+                rollback_output = f"自动回滚失败: {rollback_error}"
+        elif actual_group_name:
+            group_sync = _sync_clash_group_name(actual_group_name)
+
         if code != 0:
+            current_env = _read_clash_pool_env()
+            runtime_status, runtime_error = _inspect_clash_pool_runtime(current_env)
+            message = f"订阅已写入，但更新脚本执行失败 (exit={code})"
+            if rollback_code is not None:
+                if rollback_code == 0:
+                    message += "；已自动回滚到上一条可用订阅"
+                else:
+                    message += f"；自动回滚失败 (exit={rollback_code})"
             return {
                 "status": "error",
-                "message": f"订阅已写入，但更新脚本执行失败 (exit={code})",
+                "message": message,
                 "output": tail_lines,
                 "status_output": status_output,
                 "group_candidates": group_candidates,
                 "group_error": group_error,
+                "assigned_nodes": assigned_nodes,
+                "assign_error": assign_error,
+                "probe_history": probe_history,
+                "rollback_output": rollback_output[-4000:] if rollback_output else "",
+                "runtime_status": runtime_status,
+                "runtime_error": runtime_error,
+                "data": {
+                    "sub_url": current_env.get("SUB_URL", ""),
+                    "effective_sub_url": effective_sub_url,
+                    "auto_fixed": effective_sub_url != sub_url,
+                }
             }
+
+        if not assigned_nodes and assign_error:
+            current_env = _read_clash_pool_env()
+            runtime_status, runtime_error = _inspect_clash_pool_runtime(current_env)
+            message = f"订阅更新后未能完成策略组校验：{assign_error}"
+            if rollback_code is not None:
+                if rollback_code == 0:
+                    message += "；已自动回滚到上一条可用订阅"
+                else:
+                    message += f"；自动回滚失败 (exit={rollback_code})"
+            return {
+                "status": "error",
+                "message": message,
+                "output": tail_lines,
+                "status_output": status_output,
+                "group_candidates": group_candidates,
+                "group_error": group_error,
+                "assigned_nodes": assigned_nodes,
+                "assign_error": assign_error,
+                "probe_history": probe_history,
+                "rollback_output": rollback_output[-4000:] if rollback_output else "",
+                "runtime_status": runtime_status,
+                "runtime_error": runtime_error,
+                "data": {
+                    "sub_url": current_env.get("SUB_URL", ""),
+                    "effective_sub_url": effective_sub_url,
+                    "auto_fixed": effective_sub_url != sub_url,
+                }
+            }
+
+        runtime_status, runtime_error = _inspect_clash_pool_runtime(env_map)
+        final_message = "✅ Clash 订阅已更新并重载代理池！"
+        if effective_sub_url != sub_url:
+            final_message += "（已自动修正为可用的 Mihomo 订阅入口）"
+        if group_sync.get("updated"):
+            final_message += f"（策略组已自动同步为 {group_sync.get('after')}）"
+        if assign_error:
+            final_message += f"（节点分流未完全成功：{assign_error}）"
+        elif assigned_nodes:
+            final_message += "（已自动为各实例分配不同节点）"
         return {
             "status": "success",
-            "message": "✅ Clash 订阅已更新并重载代理池！",
+            "message": final_message,
             "output": tail_lines,
             "status_output": status_output,
             "group_candidates": group_candidates,
             "group_error": group_error,
+            "assigned_nodes": assigned_nodes,
+            "assign_error": assign_error,
+            "probe_history": probe_history,
+            "group_sync": group_sync,
+            "runtime_status": runtime_status,
+            "runtime_error": runtime_error,
             "data": {
-                "sub_url": sub_url,
+                "sub_url": effective_sub_url,
+                "effective_sub_url": effective_sub_url,
+                "auto_fixed": effective_sub_url != sub_url,
                 "count": env_map.get("COUNT", ""),
                 "image": env_map.get("IMAGE", ""),
             }
@@ -933,7 +1577,7 @@ async def cluster_view(token: str = Depends(verify_token)):
 @router.post("/api/cluster/report")
 async def cluster_report(req: ClusterReportReq):
     cf_dict = getattr(core_engine.cfg, '_c', {})
-    if req.secret != str(cf_dict.get("cluster_secret", "wenfxl666")).strip(): return {"status": "error",
+    if req.secret != str(cf_dict.get("cluster_secret", "change-me-cluster-secret")).strip(): return {"status": "error",
                                                                                       "message": "密钥错误"}
 
     target_cmd = NODE_COMMANDS.get(req.node_name, "none")
@@ -956,7 +1600,7 @@ async def cluster_report(req: ClusterReportReq):
 @router.websocket("/api/cluster/report_ws")
 async def ws_cluster_report(websocket: WebSocket, node_name: str, secret: str):
     await websocket.accept()
-    if secret != str(getattr(core_engine.cfg, '_c', {}).get("cluster_secret", "wenfxl666")).strip():
+    if secret != str(getattr(core_engine.cfg, '_c', {}).get("cluster_secret", "change-me-cluster-secret")).strip():
         await websocket.close(code=1008, reason="Secret Mismatch")
         return
     try:
@@ -999,7 +1643,7 @@ async def cluster_view_ws(websocket: WebSocket, token: str = Query(None)):
 
 @router.post("/api/cluster/upload_accounts")
 def cluster_upload_accounts(req: ClusterUploadAccountsReq):
-    if req.secret != str(getattr(core_engine.cfg, '_c', {}).get("cluster_secret", "wenfxl666")).strip(): return {
+    if req.secret != str(getattr(core_engine.cfg, '_c', {}).get("cluster_secret", "change-me-cluster-secret")).strip(): return {
         "status": "error", "message": "密钥错误"}
     success_count = 0
     for acc in req.accounts:

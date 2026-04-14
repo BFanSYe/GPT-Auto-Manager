@@ -1459,37 +1459,88 @@
                                             暂未读取到策略组，请先点击“刷新状态”或“一键更新订阅”。
                                         </div>
                                     </div>
-                                </div>
-                            </div>
 
-                            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-200/60 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white" v-if="config.http_dynamic_proxy">
-                                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b border-emerald-100 pb-5">
-                                    <h3 class="text-xl md:text-2xl font-black text-emerald-700 tracking-tight flex items-center gap-2"><span>🚪</span> HTTP 动态代理池</h3>
-                                    <label class="relative inline-flex bg-white px-4 py-2.5 md:px-5 md:py-3 rounded-xl cursor-pointer hover:bg-emerald-50 transition-colors shadow-sm border border-emerald-200 w-full sm:w-auto items-center justify-center group">
-                                        <input type="checkbox" v-model="config.http_dynamic_proxy.enable" class="sr-only peer">
-                                        <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-emerald-600 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
-                                        <span class="font-black text-emerald-900 text-sm md:text-base ml-3 tracking-wide">开启动态代理池</span>
-                                    </label>
-                                </div>
-
-                                <div class="space-y-5" :class="{'opacity-50 pointer-events-none grayscale-[50%] transition-opacity duration-300': !config.http_dynamic_proxy.enable}">
-                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 leading-relaxed shadow-sm">
-                                        适用于 <code class="font-mono">http://用户名:密码@主机:端口</code> 这类动态代理网关。开启后，多线程会从独立代理队列中取通道；如果你只填一条动态代理，系统会按通道数复制成多个独立工作位，适合“每次连接/请求自动换 IP”的服务商。
-                                    </div>
-
-                                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-                                        <div>
-                                            <label class="block text-slate-700 text-xs font-extrabold mb-2 uppercase tracking-wider">动态池通道数</label>
-                                            <input type="number" min="1" v-model.number="config.http_dynamic_proxy.pool_size" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-sm font-mono text-sm">
-                                            <span class="block text-[11px] text-slate-400 mt-2 font-medium">建议与 reg_threads 保持一致</span>
+                                    <div class="space-y-4">
+                                        <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                                            <div class="bg-cyan-50/70 border border-cyan-200 rounded-2xl px-4 py-4 shadow-sm">
+                                                <label class="block text-[11px] text-cyan-700 font-black mb-2 uppercase tracking-wider">系统当前实际生效订阅入口</label>
+                                                <div class="text-xs text-cyan-900 font-medium leading-relaxed">
+                                                    后端真正写入并使用的是下面这条链接；如果你贴入的是普通订阅串，系统会自动修正成可用的 Mihomo 入口。
+                                                </div>
+                                                <code class="block mt-3 text-[11px] md:text-xs font-mono text-slate-800 bg-white border border-cyan-100 rounded-xl px-3 py-3 break-all shadow-inner">
+                                                    {{ clashPoolInfo?.effective_sub_url || clashPoolInfo?.sub_url || clashPoolSubUrl || '暂无' }}
+                                                </code>
+                                            </div>
+                                            <div class="bg-indigo-50/70 border border-indigo-200 rounded-2xl px-4 py-4 shadow-sm">
+                                                <label class="block text-[11px] text-indigo-700 font-black mb-2 uppercase tracking-wider">默认路由对齐状态</label>
+                                                <div v-if="clashPoolRuntime" class="space-y-2">
+                                                    <div class="flex flex-wrap items-center gap-2">
+                                                        <span class="px-2.5 py-1 rounded-lg text-[11px] font-black border"
+                                                              :class="clashPoolRuntime.all_aligned === true ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (clashPoolRuntime.all_aligned === false ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-50 text-slate-600 border-slate-200')">
+                                                            {{ clashPoolRuntime.all_aligned === true ? '已全部对齐' : (clashPoolRuntime.all_aligned === false ? '存在未对齐实例' : '暂无路由组信息') }}
+                                                        </span>
+                                                        <span class="px-2.5 py-1 rounded-lg text-[11px] font-black bg-white text-slate-700 border border-slate-200">
+                                                            {{ clashPoolRuntime.aligned_count || 0 }}/{{ clashPoolRuntime.instance_ok_count || clashPoolRuntime.instance_total || 0 }} 实例已对齐
+                                                        </span>
+                                                    </div>
+                                                    <div class="text-xs text-slate-600 font-medium leading-relaxed">
+                                                        业务组：<code class="font-mono">{{ clashPoolRuntime.actual_group_name || config.clash_proxy_pool.group_name || '未知' }}</code>
+                                                        <span v-if="clashPoolRuntime.default_route_groups && clashPoolRuntime.default_route_groups.length">
+                                                            · 默认总组：<code class="font-mono">{{ clashPoolRuntime.default_route_groups.join(' / ') }}</code>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div v-else class="text-xs text-slate-500 font-medium">
+                                                    暂未读取到运行态，请点击“刷新状态”。
+                                                </div>
+                                                <div v-if="clashPoolRuntimeError" class="mt-3 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 font-medium">
+                                                    {{ clashPoolRuntimeError }}
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div class="lg:col-span-2">
-                                            <label class="block text-slate-700 text-xs font-extrabold mb-2 uppercase tracking-wider flex items-center justify-between">
-                                                动态代理列表
-                                                <span class="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200">换行分隔</span>
-                                            </label>
-                                            <textarea v-model="httpDynamicListStr" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-inner h-[120px] font-mono text-xs leading-relaxed placeholder:text-slate-300" placeholder="http://customer-xxx:password@gate.example.com:10000&#10;http://customer-yyy:password@gate.example.com:10000"></textarea>
-                                            <span class="block text-[11px] text-slate-400 mt-2 font-medium">留空时自动回退使用上方“全局默认代理”。如果你只提供一条动态代理，项目会复制为多个线程通道。</span>
+
+                                        <div v-if="clashPoolRuntime && clashPoolRuntime.instances && clashPoolRuntime.instances.length > 0">
+                                            <div class="flex items-center justify-between mb-2 gap-3">
+                                                <label class="block text-slate-700 text-xs font-extrabold uppercase tracking-wider">各实例当前生效链路</label>
+                                                <span class="text-[11px] text-slate-400 font-medium">重点看“业务组当前节点”和“默认总组当前值”是否一致指向</span>
+                                            </div>
+                                            <div class="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                                <div v-for="item in clashPoolRuntime.instances" :key="item.api" class="bg-white border rounded-2xl px-4 py-4 shadow-sm"
+                                                     :class="item.ok ? (item.route_aligned === false ? 'border-amber-200' : 'border-slate-200') : 'border-rose-200'">
+                                                    <div class="flex items-start justify-between gap-3">
+                                                        <div>
+                                                            <div class="font-black text-slate-800">{{ item.slot }}号机</div>
+                                                            <div class="text-[11px] text-slate-400 font-mono mt-1 break-all">{{ item.api }}</div>
+                                                        </div>
+                                                        <span class="px-2.5 py-1 rounded-lg text-[11px] font-black border"
+                                                              :class="!item.ok ? 'bg-rose-50 text-rose-700 border-rose-200' : (item.route_aligned === false ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200')">
+                                                            {{ !item.ok ? '读取失败' : (item.route_aligned === false ? '未完全对齐' : '已对齐') }}
+                                                        </span>
+                                                    </div>
+                                                    <div v-if="item.ok" class="mt-3 space-y-2">
+                                                        <div class="text-xs text-slate-600 font-medium">
+                                                            业务组：<code class="font-mono">{{ item.group || '未知' }}</code>
+                                                        </div>
+                                                        <div class="text-xs text-slate-600 font-medium">
+                                                            当前节点：<code class="font-mono break-all">{{ item.current_node || '未知' }}</code>
+                                                        </div>
+                                                        <div v-if="item.route_states && item.route_states.length" class="pt-2 border-t border-slate-100 space-y-2">
+                                                            <div v-for="route in item.route_states" :key="item.api + route.group" class="text-xs text-slate-600 font-medium">
+                                                                <div>
+                                                                    默认总组 <code class="font-mono">{{ route.group }}</code>
+                                                                    当前值：<code class="font-mono">{{ route.now || '-' }}</code>
+                                                                </div>
+                                                                <div v-if="route.path && route.path.length" class="mt-1 text-[11px] text-slate-400 font-mono break-all">
+                                                                    路径：{{ route.path.join(' → ') }}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div v-else class="mt-3 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3 py-2 font-medium">
+                                                        {{ item.error || '读取失败' }}
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1586,6 +1637,39 @@
                                                 </label>
                                                 <textarea v-model="warpListStr" class="w-full appearance-none bg-indigo-50/50 border border-indigo-200 text-indigo-800 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors shadow-inner h-[120px] font-mono text-xs leading-relaxed placeholder:text-indigo-300" placeholder="http://127.0.0.1:41001&#10;http://127.0.0.1:41002"></textarea>
                                             </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="bg-white p-6 md:p-8 rounded-2xl shadow-sm hover:shadow-md transition-shadow duration-300 border border-slate-200/60 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-50/30 to-white" v-if="config.http_dynamic_proxy">
+                                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b border-emerald-100 pb-5">
+                                    <h3 class="text-xl md:text-2xl font-black text-emerald-700 tracking-tight flex items-center gap-2"><span>🚪</span> HTTP 动态代理池</h3>
+                                    <label class="relative inline-flex bg-white px-4 py-2.5 md:px-5 md:py-3 rounded-xl cursor-pointer hover:bg-emerald-50 transition-colors shadow-sm border border-emerald-200 w-full sm:w-auto items-center justify-center group">
+                                        <input type="checkbox" v-model="config.http_dynamic_proxy.enable" class="sr-only peer">
+                                        <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-emerald-600 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
+                                        <span class="font-black text-emerald-900 text-sm md:text-base ml-3 tracking-wide">开启动态代理池</span>
+                                    </label>
+                                </div>
+
+                                <div class="space-y-5" :class="{'opacity-50 pointer-events-none grayscale-[50%] transition-opacity duration-300': !config.http_dynamic_proxy.enable}">
+                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 leading-relaxed shadow-sm">
+                                        适用于 <code class="font-mono">http://用户名:密码@主机:端口</code> 这类动态代理网关。开启后，多线程会从独立代理队列中取通道；如果你只填一条动态代理，系统会按通道数复制成多个独立工作位，适合“每次连接/请求自动换 IP”的服务商。
+                                    </div>
+
+                                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                                        <div>
+                                            <label class="block text-slate-700 text-xs font-extrabold mb-2 uppercase tracking-wider">动态池通道数</label>
+                                            <input type="number" min="1" v-model.number="config.http_dynamic_proxy.pool_size" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-sm font-mono text-sm">
+                                            <span class="block text-[11px] text-slate-400 mt-2 font-medium">建议与 reg_threads 保持一致</span>
+                                        </div>
+                                        <div class="lg:col-span-2">
+                                            <label class="block text-slate-700 text-xs font-extrabold mb-2 uppercase tracking-wider flex items-center justify-between">
+                                                动态代理列表
+                                                <span class="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200">换行分隔</span>
+                                            </label>
+                                            <textarea v-model="httpDynamicListStr" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-inner h-[120px] font-mono text-xs leading-relaxed placeholder:text-slate-300" placeholder="http://customer-xxx:password@gate.example.com:10000&#10;http://customer-yyy:password@gate.example.com:10000"></textarea>
+                                            <span class="block text-[11px] text-slate-400 mt-2 font-medium">留空时自动回退使用上方“全局默认代理”。如果你只提供一条动态代理，项目会复制为多个线程通道。</span>
                                         </div>
                                     </div>
                                 </div>

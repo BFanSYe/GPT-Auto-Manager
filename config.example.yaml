@@ -137,11 +137,11 @@ clash_proxy_pool:
   api_url: "http://127.0.0.1:9097"
   #true为测速优选，false为随机盲抽。提示：如果A节点一直是最低延迟那么可能每次都是A节点。
   fastest_mode: false
-  # 你机场包含所有节点的策略组名称，带有 Emoji 也没关系
+  # 业务策略组名称。若使用“Clash 订阅自助更新”，更新后可在面板中自动识别并同步
   group_name: "节点选择"
   # Clash 的外部控制鉴权秘钥 (Secret)
   secret: "set-your-secret"
-  # 用于连接外网测活的本地代理端口 (通常与上方的 default_proxy 保持一致)
+  # 用于连接外网测活的本地代理端口。独享池模式下当 warp_proxy_list 为空时会回退使用它
   test_proxy_url: ""
   # 节点过滤黑名单：严格剔除包含以下关键词的节点 (如港台地区、说明性节点)
   blacklist:
@@ -165,6 +165,7 @@ clash_proxy_pool:
     - "回国"
 
 warp_proxy_list:
+  # 独享池模式下，每条代表一个独立通道 / 一个 Mihomo 实例对应的 HTTP 代理端口
   - "http://127.0.0.1:41001"
   - "http://127.0.0.1:41002"
   - "http://127.0.0.1:41003"
@@ -299,4 +300,5 @@ cf_api_key:
 #集群总控
 cluster_node_name: "NODE-1"
 cluster_master_url: ""
-cluster_secret: "wenfxl666"
+# 请务必改成你自己的随机长字符串，不要使用默认值
+cluster_secret: "change-me-cluster-secret"

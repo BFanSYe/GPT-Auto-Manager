@@ -100,52 +100,278 @@ def get_api_url_for_proxy(proxy_url: str) -> str:
         pass
     return CLASH_API_URL
 
+def _get_pool_index_from_proxy_url(proxy_url: str | None) -> int | None:
+    target = proxy_url or LOCAL_PROXY_URL
+    try:
+        parsed = urllib.parse.urlparse(str(target))
+        if parsed.port and 41000 < parsed.port <= 41050:
+            return parsed.port - 41000
+    except Exception:
+        pass
+    return 1 if POOL_MODE else None
+
+
+def _get_clash_config_path(proxy_url: str | None = None) -> str:
+    idx = _get_pool_index_from_proxy_url(proxy_url)
+    base_dir = "/opt/mihomo-pool"
+    if idx is not None:
+        path = os.path.join(base_dir, f"config_{idx}", "config.yaml")
+        if os.path.exists(path):
+            return path
+    fallback = os.path.join(base_dir, "config_1", "config.yaml")
+    return fallback if os.path.exists(fallback) else ""
+
+
+def _extract_default_route_groups(proxy_url: str | None = None) -> list[str]:
+    config_path = _get_clash_config_path(proxy_url)
+    if not config_path or not os.path.exists(config_path):
+        return []
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {}
+        rules = data.get("rules") or []
+        groups = []
+        for raw in reversed(rules):
+            if not isinstance(raw, str):
+                continue
+            parts = [str(x).strip().strip("'\"") for x in raw.split(",")]
+            if len(parts) >= 2 and parts[0].upper() in {"MATCH", "FINAL"}:
+                groups.append(parts[1])
+                break
+        return groups
+    except Exception:
+        return []
+
+
+def _find_actual_group_name(proxies_data: dict, keyword: str) -> str:
+    wanted = str(keyword or "").strip()
+    wanted_lower = wanted.lower()
+    ai_hints = ["chatgpt", "openai", "copilot", "claude", "anthropic", "ai"]
+    best_name = ""
+    best_score = None
+    for key, meta in (proxies_data or {}).items():
+        if not isinstance(meta, dict):
+            continue
+        all_items = meta.get("all")
+        if not isinstance(all_items, list):
+            continue
+        name = str(key or "").strip()
+        if not name:
+            continue
+        leaf_count = 0
+        child_group_count = 0
+        for item in all_items:
+            child = str(item or "").strip()
+            if not child:
+                continue
+            child_meta = proxies_data.get(child)
+            if isinstance(child_meta, dict) and isinstance(child_meta.get("all"), list):
+                child_group_count += 1
+            else:
+                leaf_count += 1
+
+        score = [0, 0, leaf_count, -child_group_count, len(all_items), -len(name)]
+        if wanted and name == wanted:
+            score[0] = 100
+        elif wanted and wanted_lower == name.lower():
+            score[0] = 95
+        elif wanted and wanted_lower in name.lower():
+            score[0] = 90
+        elif any(hint in name.lower() for hint in ai_hints):
+            score[0] = 70
+        elif child_group_count == 0:
+            score[0] = 50
+
+        if wanted and any(wanted_lower in str(item or "").strip().lower() for item in all_items):
+            score[1] += 5
+        if any(hint in name.lower() for hint in ai_hints):
+            score[1] += 3
+
+        score_tuple = tuple(score)
+        if best_score is None or score_tuple > best_score:
+            best_score = score_tuple
+            best_name = name
+    return best_name
+
+
+def _find_group_path(proxies_data: dict, start_group: str, target_group: str) -> list[str]:
+    start = str(start_group or "").strip()
+    target = str(target_group or "").strip()
+    if not start or not target:
+        return []
+    if start == target:
+        return [start]
+
+    queue_items = [(start, [start])]
+    visited = {start}
+    while queue_items:
+        current, path = queue_items.pop(0)
+        meta = proxies_data.get(current)
+        if not isinstance(meta, dict):
+            continue
+        all_items = meta.get("all")
+        if not isinstance(all_items, list):
+            continue
+        for raw in all_items:
+            child = str(raw or "").strip()
+            if not child:
+                continue
+            if child == target:
+                return path + [target]
+            child_meta = proxies_data.get(child)
+            if isinstance(child_meta, dict) and isinstance(child_meta.get("all"), list) and child not in visited:
+                visited.add(child)
+                queue_items.append((child, path + [child]))
+    return []
+
+
+def _ensure_default_route_alignment(api_url: str, headers: dict, proxies_data: dict, target_group: str, proxy_url: str | None = None) -> tuple[bool, list[dict], str]:
+    default_groups = _extract_default_route_groups(proxy_url)
+    if not default_groups or not target_group:
+        return True, [], ""
+
+    ops = []
+    errors = []
+    for root_group in default_groups:
+        path = _find_group_path(proxies_data, root_group, target_group)
+        if not path:
+            errors.append(f"{root_group} 无法到达 {target_group}")
+            continue
+        for idx in range(len(path) - 1):
+            parent = path[idx]
+            child = path[idx + 1]
+            current_now = str((proxies_data.get(parent) or {}).get("now") or "").strip()
+            if current_now == child:
+                ops.append({"group": parent, "select": child, "ok": True, "skipped": True})
+                continue
+            try:
+                resp = std_requests.put(
+                    f"{api_url}/proxies/{urllib.parse.quote(parent, safe='')}",
+                    headers=headers,
+                    json={"name": child},
+                    timeout=5,
+                )
+                ok = resp.status_code == 204
+                ops.append({"group": parent, "select": child, "ok": ok, "skipped": False, "status": resp.status_code})
+                if ok:
+                    parent_meta = proxies_data.get(parent)
+                    if isinstance(parent_meta, dict):
+                        parent_meta["now"] = child
+                else:
+                    errors.append(f"{parent} -> {child} HTTP {resp.status_code}")
+            except Exception as e:
+                ops.append({"group": parent, "select": child, "ok": False, "skipped": False, "error": str(e)})
+                errors.append(f"{parent} -> {child}: {e}")
+    return len(errors) == 0, ops, "；".join(errors)
+
+
+def _describe_policy_state(proxies_data: dict, proxy_url: str | None = None) -> dict:
+    actual_group_name = _find_actual_group_name(proxies_data, PROXY_GROUP_NAME)
+    default_groups = _extract_default_route_groups(proxy_url)
+    root_states = []
+    route_aligned = True if default_groups else None
+    for root_group in default_groups:
+        meta = proxies_data.get(root_group) or {}
+        root_now = str(meta.get("now") or "").strip()
+        path = _find_group_path(proxies_data, root_group, actual_group_name) if actual_group_name else []
+        aligned = bool(path) and all(str((proxies_data.get(path[idx]) or {}).get("now") or "").strip() == path[idx + 1] for idx in range(len(path) - 1))
+        if route_aligned is not None:
+            route_aligned = route_aligned and aligned
+        root_states.append({
+            "group": root_group,
+            "now": root_now,
+            "path": path,
+            "aligned": aligned,
+        })
+    return {
+        "group_name": actual_group_name,
+        "current_node": str((proxies_data.get(actual_group_name) or {}).get("now") or "").strip() if actual_group_name else "",
+        "default_groups": default_groups,
+        "root_states": root_states,
+        "route_aligned": route_aligned,
+    }
+
+
 def test_proxy_liveness(proxy_url=None):
     """测试当前代理是否可用 (脱敏)"""
     raw_url = proxy_url if proxy_url else LOCAL_PROXY_URL
     target_proxy = format_docker_url(raw_url)
     proxies = {"http": target_proxy, "https": target_proxy}
     display_name = get_display_name(proxy_url if proxy_url else LOCAL_PROXY_URL)
-    
+
+    policy_state = {"group_name": "", "current_node": "", "default_groups": [], "root_states": [], "route_aligned": None}
+    try:
+        api_url = get_api_url_for_proxy(proxy_url)
+        headers = {"Authorization": f"Bearer {CLASH_SECRET}"} if CLASH_SECRET else {}
+        api_resp = std_requests.get(f"{api_url}/proxies", headers=headers, timeout=5)
+        if api_resp.status_code == 200:
+            policy_state = _describe_policy_state(api_resp.json().get("proxies", {}) or {}, proxy_url)
+    except Exception:
+        pass
+
+    loc = "UNKNOWN"
+    latency_str = "?"
+    cf_ok = False
     try:
         res = std_requests.get("https://cloudflare.com/cdn-cgi/trace", proxies=proxies, timeout=5)
         if res.status_code == 200:
-            loc = "UNKNOWN"
+            cf_ok = True
+            latency_str = f"{res.elapsed.total_seconds():.2f}s"
             for line in res.text.split('\n'):
                 if line.startswith("loc="):
-                    loc = line.split("=")[1].strip()
-
-            blocked_regions = ["CN", "HK"]
-            if loc in blocked_regions:
-                print(f"[{ts()}] [代理测活] {display_name} 地区受限 ({loc})，弃用！")
-                return False
-
-            try:
-                from curl_cffi import requests as cffi_requests
-                auth_resp = cffi_requests.get(
-                    "https://auth.openai.com/",
-                    proxies=proxies,
-                    timeout=8,
-                    verify=True,
-                    allow_redirects=False,
-                    impersonate="chrome110",
-                )
-                if auth_resp.status_code >= 500:
-                    print(f"[{ts()}] [代理测活] {display_name} OpenAI 入口异常 (HTTP {auth_resp.status_code})，弃用！")
-                    return False
-            except Exception as e:
-                print(f"[{ts()}] [代理测活] {display_name} OpenAI TLS 校验失败: {e}")
-                return False
-
-            print(
-                f"[{ts()}] [代理测活] {display_name} 成功！地区 ({loc})，"
-                f"延迟: {res.elapsed.total_seconds():.2f}s"
-            )
-            return True
-        return False
+                    loc = line.split("=", 1)[1].strip()
+                    break
     except Exception:
-        print(f"[{ts()}] [代理测活] {display_name} 链路中断或超时。")
+        pass
+
+    try:
+        from curl_cffi import requests as cffi_requests
+        auth_resp = cffi_requests.get(
+            "https://auth.openai.com/",
+            proxies=proxies,
+            timeout=8,
+            verify=True,
+            allow_redirects=False,
+            impersonate="chrome110",
+        )
+        if auth_resp.status_code >= 500:
+            print(f"[{ts()}] [代理测活] {display_name} OpenAI 入口异常 (HTTP {auth_resp.status_code})，弃用！")
+            return False
+    except Exception as e:
+        print(f"[{ts()}] [代理测活] {display_name} OpenAI TLS 校验失败: {e}")
         return False
+
+    blocked_regions = ["CN", "HK"]
+    route_aligned = policy_state.get("route_aligned")
+    if cf_ok and loc in blocked_regions and route_aligned is not False:
+        print(f"[{ts()}] [代理测活] {display_name} 地区受限 ({loc})，弃用！")
+        return False
+
+    business_group = str(policy_state.get("group_name") or "").strip()
+    current_node = clean_for_log(str(policy_state.get("current_node") or "").strip())
+    route_note = ""
+    if route_aligned is False:
+        route_parts = []
+        for item in policy_state.get("root_states") or []:
+            group = str(item.get("group") or "").strip()
+            now = clean_for_log(str(item.get("now") or "").strip())
+            route_parts.append(f"{group}={now or '-'}")
+        route_note = f"；默认路由未对齐业务组，仅供参考 ({' / '.join(route_parts)})"
+    elif route_aligned is True and policy_state.get("root_states"):
+        route_parts = []
+        for item in policy_state.get("root_states") or []:
+            group = str(item.get("group") or "").strip()
+            now = clean_for_log(str(item.get("now") or "").strip())
+            route_parts.append(f"{group}={now or '-'}")
+        route_note = f"；默认路由已对齐 ({' / '.join(route_parts)})"
+
+    if cf_ok:
+        business_note = f"；业务组[{business_group}]={current_node}" if business_group and current_node else ""
+        print(f"[{ts()}] [代理测活] {display_name} 成功！地区 ({loc})，延迟: {latency_str}{business_note}{route_note}")
+    else:
+        business_note = f"业务组[{business_group}]={current_node}" if business_group and current_node else "OpenAI 入口可用"
+        print(f"[{ts()}] [代理测活] {display_name} Cloudflare 观测失败，但 {business_note}，继续使用{route_note}")
+    return True
 
 
 def smart_switch_node(proxy_url=None):
@@ -187,17 +413,13 @@ def _do_smart_switch(proxy_url=None):
             
         proxies_data = resp.json().get('proxies', {})
 
-        actual_group_name = None
-        for key in proxies_data.keys():
-            if PROXY_GROUP_NAME in key and isinstance(proxies_data[key], dict) and 'all' in proxies_data[key]:
-                actual_group_name = key
-                break
+        actual_group_name = _find_actual_group_name(proxies_data, PROXY_GROUP_NAME)
                 
         if not actual_group_name:
             print(f"[{ts()}] [ERROR] {display_name} 找不到策略组关键词 '{PROXY_GROUP_NAME}'")
             return False
             
-        safe_group_name = urllib.parse.quote(actual_group_name)
+        safe_group_name = urllib.parse.quote(actual_group_name, safe="")
         all_nodes = proxies_data[actual_group_name].get('all', [])
         
         valid_nodes = []
@@ -263,6 +485,10 @@ def _do_smart_switch(proxy_url=None):
                             headers=headers, json={"name": best_node}, timeout=5
                         )
                         if switch_resp.status_code == 204:
+                            proxies_data.setdefault(actual_group_name, {})["now"] = best_node
+                            aligned, _, align_error = _ensure_default_route_alignment(current_api_url, headers, proxies_data, actual_group_name, proxy_url)
+                            if not aligned and align_error:
+                                print(f"[{ts()}] [代理池] {display_name} 默认路由自动对齐失败: {align_error}")
                             time.sleep(1)
                             if test_proxy_liveness(proxy_url):
                                 return True
@@ -284,6 +510,10 @@ def _do_smart_switch(proxy_url=None):
             )
             
             if switch_resp.status_code == 204:
+                proxies_data.setdefault(actual_group_name, {})["now"] = selected_node
+                aligned, _, align_error = _ensure_default_route_alignment(current_api_url, headers, proxies_data, actual_group_name, proxy_url)
+                if not aligned and align_error:
+                    print(f"[{ts()}] [代理池] {display_name} 默认路由自动对齐失败: {align_error}")
                 time.sleep(1.5)
                 if test_proxy_liveness(proxy_url):
                     return True

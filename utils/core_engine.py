@@ -584,7 +584,7 @@ def _queue_proxy_pool_enabled() -> bool:
 
 def _queue_proxy_pool_requires_switch() -> bool:
     """当前队列模式是否仍需要调用 smart_switch_node。"""
-    return bool(cfg._clash_enable and cfg._clash_pool_mode)
+    return False
 
 
 def _pool_parallel_limit(requested: int) -> int:
@@ -594,7 +594,10 @@ def _pool_parallel_limit(requested: int) -> int:
         return max(1, min(requested, int(getattr(cfg, "HTTP_DYNAMIC_PROXY_POOL_SIZE", requested) or requested)))
     if cfg._clash_enable and cfg._clash_pool_mode:
         try:
-            return max(1, min(requested, cfg.PROXY_QUEUE.qsize()))
+            qsize = int(cfg.PROXY_QUEUE.qsize())
+            if qsize <= 0:
+                return 0
+            return min(requested, qsize)
         except Exception:
             return requested
     return requested
@@ -602,7 +605,10 @@ def _pool_parallel_limit(requested: int) -> int:
 
 def _run_with_pool_proxy(worker_fn):
     """从 PROXY_QUEUE 中取出一个代理通道执行 worker，并在结束后放回。"""
-    p = cfg.PROXY_QUEUE.get()
+    try:
+        p = cfg.PROXY_QUEUE.get(timeout=3)
+    except queue.Empty:
+        raise RuntimeError("代理池为空，无法分配代理通道")
     try:
         return worker_fn(p, not _queue_proxy_pool_requires_switch())
     finally:
@@ -891,6 +897,9 @@ def normal_main_loop(args, stop_event: threading.Event):
                     if target_count > 0 else cfg.REG_THREADS
                 )
                 current_batch = _pool_parallel_limit(current_batch)
+                if current_batch <= 0:
+                    print(f"[{ts()}] [ERROR] 当前代理池无可用通道，停止本轮并发注册。")
+                    break
                 print(f"[{ts()}] [INFO] 启用多线程并发 ({current_batch} 条通道)")
 
                 def _worker():
@@ -1047,6 +1056,9 @@ async def cpa_main_loop(args, async_stop_event: asyncio.Event):
                     remaining  = need_to_reg - success_in_this_cycle
                     batch_size = min(cfg.REG_THREADS, remaining)
                     batch_size = _pool_parallel_limit(batch_size)
+                    if batch_size <= 0:
+                        print(f"[{ts()}] [ERROR] [CPA补货] 当前代理池无可用通道，终止本轮补货。")
+                        break
 
                     if cfg._clash_enable and not cfg._clash_pool_mode:
                         print(f"[{ts()}] [INFO] [CPA补货] 切换全局节点...")
@@ -1191,6 +1203,9 @@ async def sub2api_main_loop(args, async_stop_event: asyncio.Event):
                     remaining  = need_to_reg - success_in_this_cycle
                     batch_size = min(cfg.REG_THREADS, remaining)
                     batch_size = _pool_parallel_limit(batch_size)
+                    if batch_size <= 0:
+                        print(f"[{ts()}] [ERROR] [Sub2API补货] 当前代理池无可用通道，终止本轮补货。")
+                        break
 
                     if cfg._clash_enable and not cfg._clash_pool_mode:
                         print(f"[{ts()}] [INFO] [Sub2API补货] 切换全局节点...")

@@ -3,7 +3,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            appVersion: 'v10.0.7-bfansye',
+            appVersion: 'v10.0.7-bfansye-hotfix3',
             isLoggedIn: !!localStorage.getItem('auth_token'),
             loginPassword: '',
             currentTab: window.location.hash.replace('#', '') || 'console',
@@ -59,6 +59,8 @@ createApp({
             clashPoolInfo: null,
             clashPoolGroups: [],
             clashPoolGroupError: '',
+            clashPoolRuntime: null,
+            clashPoolRuntimeError: '',
             isClashPoolUpdating: false,
             accounts: [],
             selectedAccounts: [],
@@ -271,6 +273,7 @@ createApp({
                 }
                 if (this.config.luckmail.use_imported_pool === undefined) {
                     this.config.luckmail.use_imported_pool = false;
+                }
                 if (!this.config.temporam) {
                     this.config.temporam = { cookie: '' };
                 }
@@ -330,7 +333,7 @@ createApp({
                 }
                 if (this.config.cluster_node_name === undefined) this.config.cluster_node_name = '';
                 if (this.config.cluster_master_url === undefined) this.config.cluster_master_url = '';
-                if (this.config.cluster_secret === undefined) this.config.cluster_secret = 'wenfxl666';
+                if (this.config.cluster_secret === undefined) this.config.cluster_secret = 'change-me-cluster-secret';
             } catch (e) {}
         },
         async fetchClashPoolInfo() {
@@ -339,10 +342,12 @@ createApp({
                 const data = await res.json();
                 if (data.status === 'success') {
                     this.clashPoolInfo = data.data || {};
-                    this.clashPoolSubUrl = (data.data && data.data.sub_url) ? data.data.sub_url : '';
+                    this.clashPoolSubUrl = (data.data && (data.data.effective_sub_url || data.data.sub_url)) ? (data.data.effective_sub_url || data.data.sub_url) : '';
                     this.clashPoolStatusOutput = (data.data && data.data.status_output) ? data.data.status_output : '';
                     this.clashPoolGroups = (data.data && Array.isArray(data.data.group_candidates)) ? data.data.group_candidates : [];
                     this.clashPoolGroupError = (data.data && data.data.group_error) ? data.data.group_error : '';
+                    this.clashPoolRuntime = (data.data && data.data.runtime_status) ? data.data.runtime_status : null;
+                    this.clashPoolRuntimeError = (data.data && data.data.runtime_error) ? data.data.runtime_error : '';
                 } else {
                     this.showToast(data.message || '读取 Clash 订阅信息失败', 'warning');
                 }
@@ -366,19 +371,29 @@ createApp({
                 });
                 const data = await res.json();
                 if (data.status === 'success') {
+                    const effectiveSubUrl = (data.data && data.data.effective_sub_url) ? data.data.effective_sub_url : subUrl;
                     this.clashPoolStatusOutput = data.status_output || data.output || '';
+                    this.clashPoolSubUrl = effectiveSubUrl;
                     if (this.clashPoolInfo) {
-                        this.clashPoolInfo.sub_url = subUrl;
+                        this.clashPoolInfo.sub_url = effectiveSubUrl;
+                        this.clashPoolInfo.effective_sub_url = effectiveSubUrl;
                         this.clashPoolInfo.status_output = this.clashPoolStatusOutput;
                     }
                     this.clashPoolGroups = Array.isArray(data.group_candidates) ? data.group_candidates : this.clashPoolGroups;
                     this.clashPoolGroupError = data.group_error || '';
+                    this.clashPoolRuntime = data.runtime_status || this.clashPoolRuntime;
+                    this.clashPoolRuntimeError = data.runtime_error || '';
                     this.showToast(data.message || 'Clash 订阅更新成功', 'success');
                     await this.fetchClashPoolInfo();
                 } else {
+                    if (data.data && data.data.sub_url) {
+                        this.clashPoolSubUrl = data.data.sub_url;
+                    }
                     this.clashPoolStatusOutput = data.output || data.status_output || this.clashPoolStatusOutput;
                     this.clashPoolGroups = Array.isArray(data.group_candidates) ? data.group_candidates : this.clashPoolGroups;
                     this.clashPoolGroupError = data.group_error || '';
+                    this.clashPoolRuntime = data.runtime_status || this.clashPoolRuntime;
+                    this.clashPoolRuntimeError = data.runtime_error || '';
                     this.showToast(data.message || 'Clash 订阅更新失败', 'error');
                 }
             } catch (e) {
