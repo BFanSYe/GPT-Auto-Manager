@@ -8,7 +8,7 @@ CLUSTER_NODES = {}
 NODE_COMMANDS = {}
 cluster_lock = threading.Lock()
 log_history = deque(maxlen=500)
-
+worker_status: dict = {}
 engine = core_engine.RegEngine()
 
 async def verify_token(authorization: str = Header(None)):

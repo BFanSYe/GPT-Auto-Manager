@@ -835,6 +835,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         )
 
         if create_account_resp.status_code != 200:
+            run_ctx['signup_blocked'] = True
             print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）账户创建受阻，返回: {create_account_resp.status_code}，该提示可忽略，不影响后面执行流程")
             return None, None
 

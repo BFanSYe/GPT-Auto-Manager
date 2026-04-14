@@ -3,6 +3,8 @@
 # https://github.com/dreamhunter2333/cloudflare_temp_email
 # https://github.com/maillab/cloud-mail
 # https://github.com/s12ryt/mail-curl
+
+reg_mode: "protocol"
 # 可选值: "imap" / "freemail" / "cloudflare_temp_email" / "cloudmail" / "mail_curl" / "luckmail"
 email_api_mode: "cloudflare_temp_email"
 
