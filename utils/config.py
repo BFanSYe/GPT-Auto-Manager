@@ -219,6 +219,8 @@ TG_BOT: dict = {"enable": False, "token": "", "chat_id": ""}
 CLUSTER_NODE_NAME: str = ""
 CLUSTER_MASTER_URL: str = ""
 CLUSTER_SECRET: str = "wenfxl666"
+TEMPORAM_COOKIE: str = ""
+REG_MODE: str = "protocol"
 
 def reload_all_configs():
     global _c
@@ -254,6 +256,8 @@ def reload_all_configs():
     global AI_API_BASE, AI_API_KEY, AI_MODEL, AI_ENABLE_PROFILE
     global CPA_AUTO_CHECK, SUB2API_AUTO_CHECK
     global TG_BOT
+    global TEMPORAM_COOKIE
+    global REG_MODE
     global DUCKMAIL_API_URL, DUCKMAIL_DOMAIN, DUCKMAIL_MODE, DUCK_API_TOKEN, DUCK_COOKIE, DUCK_OFFICIAL_API_BASE
     global DUCKMAIL_FORWARD_MODE, DUCKMAIL_FORWARD_EMAIL
     global DUCK_USE_PROXY
@@ -554,7 +558,10 @@ def reload_all_configs():
     CLUSTER_NODE_NAME = str(_c.get("cluster_node_name", "")).strip()
     CLUSTER_MASTER_URL = str(_c.get("cluster_master_url", "")).strip().rstrip("/")
     CLUSTER_SECRET = str(_c.get("cluster_secret", "wenfxl666")).strip()
+    REG_MODE = str(_c.get("reg_mode", "protocol")).strip().lower()
 
+    _temporam = _c.get("temporam", {})
+    TEMPORAM_COOKIE = str(_temporam.get("cookie") or "").strip()
     reload_proxy_config()
     print(f"[{ts()}] [系统] 核心配置已完成同步。")
 

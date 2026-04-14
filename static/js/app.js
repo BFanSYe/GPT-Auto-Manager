@@ -3,7 +3,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            appVersion: 'v10.0.5-bfansye',
+            appVersion: 'v10.0.7-bfansye',
             isLoggedIn: !!localStorage.getItem('auth_token'),
             loginPassword: '',
             currentTab: window.location.hash.replace('#', '') || 'console',
@@ -84,8 +84,10 @@ createApp({
                 ai_base: true, cluster_url: true, proxy: true, clash_api: true,
                 clash_test: true, tg_token: false, tg_chatid: false, cpa_url: true, sub_url: true,
                 cluster_secret: false, hero_key: false, duck_token: false, duck_cookie: false,
+                luckmail: false,
+                temporam: false,
                 master_rt: false,
-                luckmail: false, clash_sub: false
+                clash_sub: false
             },
 
             toasts: [],
@@ -269,6 +271,11 @@ createApp({
                 }
                 if (this.config.luckmail.use_imported_pool === undefined) {
                     this.config.luckmail.use_imported_pool = false;
+                if (!this.config.temporam) {
+                    this.config.temporam = { cookie: '' };
+                }
+                if (!this.config.reg_mode) {
+                    this.config.reg_mode = 'protocol';
                 }
                 if (this.config.luckmail.specified_email === undefined) {
                     this.config.luckmail.specified_email = '';

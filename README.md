@@ -4,7 +4,7 @@
 
 ### 中文说明（默认）
 
-本仓库维护了一个基于上游 `v10.0.5` 的自定义分支，主要用于保留当前生产环境已经验证通过的定制能力。
+本仓库维护了一个基于上游 `v10.0.7` 的自定义分支，主要用于保留当前生产环境已经验证通过的定制能力。
 
 #### 本 fork 额外保留的功能
 
@@ -46,12 +46,12 @@
 
 #### 建议长期使用的分支命名
 
-- 发布分支：`release/bfansye-custom-v10.0.5`
+- 发布分支：`release/bfansye-custom-v10.0.7`
 - 主维护分支：`main-bfansye`
 
 ### English Notes
 
-This repository keeps a custom branch based on upstream `v10.0.5`, mainly to preserve the features already verified in the current production deployment.
+This repository keeps a custom branch based on upstream `v10.0.7`, mainly to preserve the features already verified in the current production deployment.
 
 #### Extra features preserved in this fork
 

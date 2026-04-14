@@ -202,6 +202,57 @@ def _post_with_retry(
     raise RuntimeError("Request failed without exception")
 
 
+def _debug_response_summary(resp: Any, limit: int = 900) -> str:
+    if resp is None:
+        return "response=None"
+
+    try:
+        status = getattr(resp, "status_code", "?")
+    except Exception:
+        status = "?"
+
+    try:
+        headers = getattr(resp, "headers", {}) or {}
+        content_type = str(headers.get("content-type") or "").strip()
+        location = str(headers.get("Location") or headers.get("location") or "").strip()
+    except Exception:
+        content_type = ""
+        location = ""
+
+    page_type = ""
+    continue_url = ""
+    body = ""
+
+    try:
+        data = resp.json()
+        if isinstance(data, dict):
+            page_type = str((data.get("page") or {}).get("type") or "").strip()
+            continue_url = str(data.get("continue_url") or "").strip()
+        body = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    except Exception:
+        try:
+            body = str(getattr(resp, "text", "") or "")
+        except Exception:
+            body = ""
+
+    body = re.sub(r"\s+", " ", body).strip()
+    if limit > 0 and len(body) > limit:
+        body = body[:limit] + "...(truncated)"
+
+    parts = [f"HTTP={status}"]
+    if content_type:
+        parts.append(f"CT={content_type}")
+    if location:
+        parts.append(f"Location={location}")
+    if page_type:
+        parts.append(f"page.type={page_type}")
+    if continue_url:
+        parts.append(f"continue_url={continue_url}")
+    if body:
+        parts.append(f"body={body}")
+    return " | ".join(parts)
+
+
 def _oai_headers(did: str, extra: dict = None) -> dict:
     h = {
         "accept": "application/json",
@@ -687,9 +738,11 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
 
         if signup_resp.status_code == 403:
             print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）注册请求触发 403 拦截，稍作等待后重试...")
+            print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）注册请求响应详情: {_debug_response_summary(signup_resp)}")
             return "retry_403", None
         if signup_resp.status_code != 200:
             print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）提交邮箱环节异常, 返回: {signup_resp.status_code}")
+            print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）提交邮箱响应详情: {_debug_response_summary(signup_resp)}")
             return None, None
 
         sentinel_pwd = generate_payload(did=did, flow="username_password_create", proxy=proxy, user_agent=current_ua,
@@ -711,6 +764,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
 
         if pwd_resp.status_code != 200:
             print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）设密码环节被拦截，返回: {pwd_resp.status_code}，该提示可忽略，不影响后面执行流程")
+            print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）设密码响应详情: {_debug_response_summary(pwd_resp)}")
             if run_ctx is not None: run_ctx['pwd_blocked'] = True
             return None, None
 
@@ -835,8 +889,8 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         )
 
         if create_account_resp.status_code != 200:
-            run_ctx['signup_blocked'] = True
             print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）账户创建受阻，返回: {create_account_resp.status_code}，该提示可忽略，不影响后面执行流程")
+            print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）账户创建响应详情: {_debug_response_summary(create_account_resp)}")
             return None, None
 
         try:
@@ -916,36 +970,6 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         )
         if token_json_str:
             return token_json_str, password
-
-        if "/add-phone" in current_url:
-            print(f"[{cfg.ts()}] [INFO] （{mask_email(email)}）在进入 HeroSMS 前，尝试刷新页面并重新登录一次，看看能否直接跳过手机号验证...")
-            oauth_retry = generate_oauth_url()
-            retry_token_json, retry_session, retry_url = _run_silent_login_flow(
-                email=email,
-                password=password,
-                proxy=proxy,
-                proxies=proxies,
-                email_jwt=email_jwt,
-                processed_mails=processed_mails,
-                oauth_log=oauth_retry,
-                current_ua=current_ua,
-                base_did=did,
-                reg_ctx_seed=reg_ctx,
-            )
-            if retry_token_json:
-                print(f"[{cfg.ts()}] [SUCCESS] （{mask_email(email)}）刷新并重登后成功跳过手机号验证！")
-                return retry_token_json, password
-            if retry_session is not None:
-                s_log = retry_session
-            if retry_url:
-                current_url = retry_url
-            if "/add-phone" not in current_url and "code=" in current_url and "state=" in current_url:
-                return submit_callback_url(
-                    callback_url=current_url,
-                    expected_state=oauth_retry.state,
-                    code_verifier=oauth_retry.code_verifier,
-                    proxies=proxies,
-                ), password
 
         if "/add-phone" in current_url:
             print(f"[{cfg.ts()}] [INFO] （{mask_email(email)}） OAuth链路触发风控，进入 HeroSMS 手机号验证流程...")

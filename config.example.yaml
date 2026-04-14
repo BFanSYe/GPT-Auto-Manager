@@ -101,7 +101,11 @@ luckmail:
   # 私有邮箱池模式下可指定某个具体邮箱，不填则按 email_type/domain 自动分配
   specified_email: ""
   reuse_purchased: true
-  tag_id: 
+  tag_id:
+
+temporam:
+  cookie: ''
+
 # [代理配置]
 # openai注册时代理地址，例子：http://127.0.0.1:7897。如果是国外服务器此项可以不填
 default_proxy: ""

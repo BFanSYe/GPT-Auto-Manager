@@ -196,6 +196,22 @@ def get_email_and_token(proxies: Any = None) -> tuple:
             print(f"[{cfg.ts()}] [ERROR] mail-curl 获取邮箱异常: {e}")
         return None, None
 
+    if mode == "temporam":
+        try:
+            from utils.email_providers.temporam_service import TemporamService
+            tp_service = TemporamService(proxies=mail_proxies)
+            email, token = tp_service.create_email()
+
+            if email and token:
+                set_last_email(email)
+                print(f"[{cfg.ts()}] [INFO] Temporam 成功生成邮箱: ({mask_email(email)})")
+                return email, token
+            else:
+                print(f"[{cfg.ts()}] [ERROR] Temporam 获取邮箱失败")
+        except Exception as e:
+            print(f"[{cfg.ts()}] [ERROR] Temporam 流程异常: {e}")
+        return None, None
+
     if mode == "luckmail":
         try:
             from utils.email_providers.luckmail_service import LuckMailService
@@ -705,6 +721,37 @@ def get_oai_code(
                                     processed_mail_ids.add(m_id)
                                     print(f"\n[{cfg.ts()}] [SUCCESS] mail_curl ({mask_email(email)})邮箱提取成功: {code}")
                                     return code
+
+
+            elif mode == "temporam":
+                if not jwt:
+                    print(f"\n[{cfg.ts()}] [ERROR] Temporam 缺少 token(即邮箱号)，无法提取验证码！")
+                    return ""
+                try:
+                    from utils.email_providers.temporam_service import TemporamService
+                    tp_service = TemporamService(proxies=mail_proxies)
+                    raw_data = tp_service.get_messages(jwt)
+                    email_list = raw_data.get("data", []) if isinstance(raw_data, dict) else []
+
+                    for msg in email_list:
+                        msg_id = str(msg.get("id", msg.get("uuid", "")))
+
+                        if not msg_id or msg_id in processed_mail_ids:
+                            continue
+                        from_email = str(msg.get("fromEmail", "")).lower()
+                        subject = str(msg.get("subject", ""))
+                        summary = str(msg.get("summary", ""))
+                        full_text = f"{from_email}\n{subject}\n{summary}"
+                        if "openai" not in from_email and "openai" not in full_text.lower():
+                            continue
+                        code = _extract_otp_code(full_text)
+                        if code:
+                            processed_mail_ids.add(msg_id)
+                            print(f"\n[{cfg.ts()}] [SUCCESS] Temporam ({mask_email(email)})邮箱提取成功: {code}")
+                            return code
+
+                except Exception as e:
+                    pass
 
             elif mode == "cloudmail":
                 token = get_cm_token(mail_proxies)

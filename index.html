@@ -487,6 +487,7 @@
                                     <option value="tempmail_org">tempmail_org</option>
                                     <option value="duckmail">duckmail (DuckMail 鸭子邮箱)</option>
                                     <option value="generator_email">generator_email</option>
+                                    <option value="temporam">Temporam.com (需填Cookie)</option>
                                 </select>
 
                                 <label class="block text-slate-700 text-sm font-extrabold mb-1 mt-6">发信域名池 (mail_domains)</label>
@@ -1020,6 +1021,23 @@
                                         <p class="flex items-center gap-1.5 text-sm"><span>✅</span> 已接入 Generator.email</p>
                                         <p class="mt-2 text-emerald-700 opacity-90">系统将请求获取邮箱，并提取验证码。</p>
                                         <p class="mt-3 text-rose-600 font-black bg-rose-50/50 p-2 rounded-lg border border-rose-100">🔥 提示：此站可能存在强力的 Cloudflare 盾，建议开启“获取邮箱使用全局代理穿透”并使用优质代理。</p>
+                                    </div>
+                                </div>
+                                <div v-if="config.email_api_mode === 'temporam'" class="space-y-4 mt-2 animate-fade-in">
+                                    <div class="flex items-center gap-2 mb-4">
+                                        <span class="text-xs font-black text-amber-800 bg-amber-100 px-3 py-1.5 rounded-md border border-amber-200 shadow-sm uppercase tracking-wider">当前模式</span>
+                                        <span class="text-sm font-black text-slate-700">Temporam.com (Cookie 模式)</span>
+                                    </div>
+                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 p-4 rounded-xl leading-relaxed shadow-sm">
+                                        <p class="flex items-center gap-1.5 text-sm"><span>✅</span> 已切换至 Temporam.com 临时邮箱</p>
+                                        <p class="mt-2 text-emerald-700 opacity-90">请在浏览器中访问 temporam.com，按 F12 打开开发者工具，在网络请求的 Request Headers 中复制完整的 <code>Cookie</code> 字符串。</p>
+                                        <p class="mt-3 text-rose-600 font-black bg-rose-50/50 p-2 rounded-lg border border-rose-100">🔥 提示：Cookie 失效时会导致无法收取验证码，请定期更新此 Cookie！</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-slate-700 text-xs font-extrabold mb-1.5 uppercase tracking-wider">抓取的 Cookie 字符串</label>
+                                        <div class="relative">
+                                            <textarea v-model="config.temporam.cookie" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-3 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm font-mono text-xs h-28 placeholder:text-slate-300" placeholder="例如: remember_web_59ba...; XSRF-TOKEN=..."></textarea>
+                                        </div>
                                     </div>
                                 </div>
                                 <div v-if="config.email_api_mode === 'luckmail' && config.luckmail" class="space-y-6 animate-fade-in">
