@@ -31,6 +31,22 @@ def init_db():
                         value TEXT
                     )
                 ''')
+        c.execute('''
+                    CREATE TABLE IF NOT EXISTS local_mailboxes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        email TEXT UNIQUE,
+                        password TEXT,
+                        client_id TEXT,
+                        refresh_token TEXT,
+                        status INTEGER DEFAULT 0,  -- 0:未用, 1:被占用, 2:已出凭证, 3:死号
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                ''')
+        try:
+            c.execute('ALTER TABLE local_mailboxes ADD COLUMN fission_count INTEGER DEFAULT 0;')
+            c.execute('ALTER TABLE local_mailboxes ADD COLUMN retry_master INTEGER DEFAULT 0;')
+        except sqlite3.OperationalError:
+            pass
         conn.commit()
     print(f"[{ts()}] [系统] 数据库模块初始化完成")
 
@@ -180,3 +196,158 @@ def save_account_to_db(email: str, password: str, token_json_str: str) -> bool:
     except Exception as e:
         print(f"[{ts()}] [ERROR] 数据库保存失败: {e}")
         return False
+
+def import_local_mailboxes(mailboxes_data: list) -> int:
+    count = 0
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            c = conn.cursor()
+            for mb in mailboxes_data:
+                try:
+                    c.execute('''
+                        INSERT OR IGNORE INTO local_mailboxes (email, password, client_id, refresh_token, status)
+                        VALUES (?, ?, ?, ?, 0)
+                    ''', (mb['email'], mb['password'], mb.get('client_id', ''), mb.get('refresh_token', '')))
+                    if c.rowcount > 0:
+                        count += 1
+                except:
+                    pass
+            conn.commit()
+    except Exception as e:
+        print(f"[{ts()}] [ERROR] 导入邮箱库失败: {e}")
+    return count
+
+def get_local_mailboxes_page(page: int = 1, page_size: int = 50) -> dict:
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("SELECT COUNT(1) FROM local_mailboxes")
+            total = c.fetchone()[0]
+
+            offset = (page - 1) * page_size
+            c.execute("SELECT * FROM local_mailboxes ORDER BY id DESC LIMIT ? OFFSET ?", (page_size, offset))
+            rows = c.fetchall()
+            return {"total": total, "data": [dict(r) for r in rows]}
+    except Exception as e:
+        return {"total": 0, "data": []}
+
+def delete_local_mailboxes(ids: list) -> bool:
+    if not ids: return True
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            c = conn.cursor()
+            placeholders = ','.join(['?'] * len(ids))
+            c.execute(f"DELETE FROM local_mailboxes WHERE id IN ({placeholders})", ids)
+            conn.commit()
+            return True
+    except Exception as e:
+        return False
+
+def get_and_lock_unused_local_mailbox() -> dict:
+    """提取一个未使用的账号，并状态锁定为 1 (占用中)，防止并发撞车"""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("BEGIN EXCLUSIVE")
+            c.execute("SELECT * FROM local_mailboxes WHERE status = 0 ORDER BY id ASC LIMIT 1")
+            row = c.fetchone()
+            if row:
+                c.execute("UPDATE local_mailboxes SET status = 1 WHERE id = ?", (row['id'],))
+                conn.commit()
+                return dict(row)
+            conn.commit()
+            return None
+    except Exception as e:
+        print(f"[{ts()}] [ERROR] 提取本地邮箱失败: {e}")
+        return None
+
+def update_local_mailbox_status(email: str, status: int):
+    """更新邮箱状态：1=占用 2=出凭证 3=死号"""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.execute("UPDATE local_mailboxes SET status = ? WHERE email = ?", (status, email))
+            conn.commit()
+    except Exception: pass
+
+def update_local_mailbox_refresh_token(email: str, new_rt: str):
+    """刷新了 Token 后更新数据库"""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.execute("UPDATE local_mailboxes SET refresh_token = ? WHERE email = ?", (new_rt, email))
+            conn.commit()
+    except Exception: pass
+
+def get_and_lock_unused_local_mailbox() -> dict:
+    """不分裂"""
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("BEGIN EXCLUSIVE")
+            c.execute("SELECT * FROM local_mailboxes WHERE status = 0 ORDER BY id ASC LIMIT 1")
+            row = c.fetchone()
+            if row:
+                c.execute("UPDATE local_mailboxes SET status = 1 WHERE id = ?", (row['id'],))
+                conn.commit()
+                return dict(row)
+            conn.commit()
+    except Exception as e: print(f"[{ts()}] [ERROR] {e}")
+    return None
+
+
+def get_mailbox_for_pool_fission() -> dict:
+    """
+    提取的同时立刻增加计数，防止多线程撞车
+    """
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            c.execute("BEGIN EXCLUSIVE")
+            c.execute("SELECT * FROM local_mailboxes WHERE status = 0 AND retry_master = 1 LIMIT 1")
+            row = c.fetchone()
+
+            if not row:
+                c.execute("SELECT * FROM local_mailboxes WHERE status = 0 ORDER BY fission_count ASC LIMIT 1")
+                row = c.fetchone()
+
+            if row:
+                c.execute("UPDATE local_mailboxes SET fission_count = fission_count + 1 WHERE id = ?", (row['id'],))
+                conn.commit()
+                return dict(row)
+
+            conn.commit()
+            return None
+    except Exception as e:
+        print(f"[{ts()}] [DB_ERROR] 提取失败: {e}")
+        return None
+
+def update_pool_fission_result(email: str, is_blocked: bool, is_raw: bool):
+    """
+    处理库分裂结果：
+    """
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            if not is_blocked:
+                conn.execute("UPDATE local_mailboxes SET retry_master = 0 WHERE email = ?", (email,))
+            else:
+                if not is_raw:
+                    conn.execute("UPDATE local_mailboxes SET retry_master = 1 WHERE email = ?", (email,))
+                else:
+                    conn.execute("UPDATE local_mailboxes SET status = 3, retry_master = 0 WHERE email = ?", (email,))
+            conn.commit()
+    except Exception as e:
+        print(f"[{ts()}] [DB_ERROR] 结果更新失败: {e}")
+
+def clear_retry_master_status(email: str):
+    """
+    清除邮箱的母号重试标记，防止多线程并发时重复取号
+    """
+    try:
+        with sqlite3.connect(DB_PATH, timeout=10) as conn:
+            conn.execute("UPDATE local_mailboxes SET retry_master = 0 WHERE email = ?", (email,))
+            conn.commit()
+    except Exception as e:
+        print(f"[{ts()}] [DB_ERROR] 清除 {email} 的 retry_master 状态失败: {e}")

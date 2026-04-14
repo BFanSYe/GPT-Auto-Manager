@@ -84,6 +84,7 @@ createApp({
                 ai_base: true, cluster_url: true, proxy: true, clash_api: true,
                 clash_test: true, tg_token: false, tg_chatid: false, cpa_url: true, sub_url: true,
                 cluster_secret: false, hero_key: false, duck_token: false, duck_cookie: false,
+                master_rt: false,
                 luckmail: false, clash_sub: false
             },
 
@@ -256,6 +257,15 @@ createApp({
                 }
                 if (!this.config.luckmail) {
                     this.config.luckmail = {};
+                }
+                if (!this.config.local_microsoft) {
+                    this.config.local_microsoft = {
+                        enable_fission: false,
+                        pool_fission: false,
+                        master_email: '',
+                        client_id: '',
+                        refresh_token: ''
+                    };
                 }
                 if (this.config.luckmail.use_imported_pool === undefined) {
                     this.config.luckmail.use_imported_pool = false;

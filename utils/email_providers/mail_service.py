@@ -333,6 +333,21 @@ def get_email_and_token(proxies: Any = None) -> tuple:
             print(f"[{cfg.ts()}] [ERROR] TempMail.org 流程异常: {e}")
         return None, None
 
+    if mode == "local_microsoft":
+        from utils.email_providers.local_microsoft_service import LocalMicrosoftService
+        ms_service = LocalMicrosoftService(proxies=mail_proxies)
+
+        mailbox_info = ms_service.get_unused_mailbox()
+        if not mailbox_info:
+            cfg.POOL_EXHAUSTED = True
+            print(f"[{cfg.ts()}] [WARNING] 微软邮箱库已耗尽，请前往前端导入更多账号。")
+            return None, None
+
+        email = mailbox_info["email"]
+        set_last_email(email)
+        print(f"[{cfg.ts()}] [INFO] 微软库分配并锁定账号: ({mask_email(email)})")
+        return email, json.dumps(mailbox_info, ensure_ascii=False)
+
     prefix, ai_enabled = _get_ai_data_package()
 
     if cfg.ENABLE_SUB_DOMAINS:
@@ -546,12 +561,73 @@ def _create_imap_conn(proxy_str=None):
     return imaplib.IMAP4_SSL(cfg.IMAP_SERVER, cfg.IMAP_PORT, timeout=15)
 
 
+def _poll_local_ms_for_oai_code_graph(ms_service, target_email: str, mailbox_dict: dict, max_attempts: int) -> str:
+    from datetime import datetime
+    import time
+
+    assigned_at = float(mailbox_dict.get("assigned_at") or time.time())
+    tgt = target_email.lower().strip()
+    master_email = tgt.split('+')[0] + '@' + tgt.split('@')[1] if '+' in tgt else tgt
+
+    processed_msg_ids = set()
+
+    print(f"[{cfg.ts()}] [INFO] 进入 Graph 轮询器，靶向目标: {mask_email(tgt)}", flush=True)
+
+    for attempt in range(max_attempts):
+        if getattr(cfg, 'GLOBAL_STOP', False):
+            return ""
+
+        messages = ms_service.fetch_openai_messages(mailbox_dict)
+        if not messages:
+            if attempt % 2 == 0:
+                print(f"[{cfg.ts()}] [INFO] 第 {attempt + 1} 次轮询: 未发现任何邮件", flush=True)
+        else:
+            for msg in messages:
+                msg_id = msg.get('id')
+                if msg_id in processed_msg_ids:
+                    continue
+                raw_date = msg.get('receivedDateTime', '').replace('Z', '+00:00')
+                try:
+                    received_ts = datetime.fromisoformat(raw_date).timestamp()
+                    if received_ts < assigned_at - 60:
+                        continue
+                except Exception:
+                    continue
+                sender = str(msg.get('from', {}).get('emailAddress', {}).get('address', '')).lower()
+                if "openai.com" not in sender:
+                    continue
+                subject = msg.get('subject', '').lower()
+                if not any(k in subject for k in ["code", "verify", "chatgpt", "openai"]):
+                    continue
+
+                recipients = [str(r.get('emailAddress', {}).get('address', '')).lower().strip()
+                              for r in msg.get('toRecipients', [])]
+                body_content = msg.get('body', {}).get('content', '')
+
+                is_hit = (tgt in recipients) or (f"to: {tgt}" in body_content.lower()) or (tgt in body_content.lower())
+
+                if not is_hit and master_email in recipients and (time.time() - received_ts < 30):
+                    is_hit = True
+
+                if is_hit:
+                    code = _extract_otp_code(f"{subject}\n{body_content}")
+                    if code:
+                        print(f"\n[{cfg.ts()}] [SUCCESS] 🎯 成功捕获专属验证码: {code} -> {mask_email(tgt)}", flush=True)
+                        return code
+
+                processed_msg_ids.add(msg_id)
+
+        time.sleep(5)
+    return ""
+
+
 def get_oai_code(
         email: str,
         jwt: str = "",
         proxies: Any = None,
         processed_mail_ids: set = None,
         pattern: str = OTP_CODE_PATTERN,
+        max_attempts: int = 20,
 ) -> str:
     """轮询各邮箱服务商收取 OpenAI 验证码，返回 6 位字符串或空串。"""
     mailbox_id = jwt
@@ -579,7 +655,29 @@ def get_oai_code(
             print(f"\n[{cfg.ts()}] [ERROR] IMAP 初始登录失败: {e}")
             mail_conn = None
 
-    for attempt in range(20):
+    local_ms_account = None
+    if mode == "local_microsoft":
+        try:
+            parsed_jwt = json.loads(jwt or "{}")
+            local_ms_account = parsed_jwt if isinstance(parsed_jwt, dict) else None
+        except Exception:
+            pass
+
+        if local_ms_account:
+            local_ms_account["email"] = str(local_ms_account.get("email") or email).strip()
+            local_ms_account["assigned_at"] = time.time() - 30
+            from utils.email_providers.local_microsoft_service import LocalMicrosoftService
+            ms_service = LocalMicrosoftService(proxies=mail_proxies)
+            return _poll_local_ms_for_oai_code_graph(
+                ms_service=ms_service,
+                target_email=email,
+                mailbox_dict=local_ms_account,
+                max_attempts=max_attempts
+            )
+        else:
+            print(f"\n[{cfg.ts()}] [ERROR] 缺少微软邮箱凭据，无法收信。")
+
+    for attempt in range(max_attempts):
         if getattr(cfg, 'GLOBAL_STOP', False): return ""
         try:
             if mode == "mail_curl":

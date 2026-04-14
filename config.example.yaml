@@ -45,6 +45,16 @@ imap:
   # 16位应用专用密码，谷歌邮箱要去https://myaccount.google.com/apppasswords这里创建专属应用密码
   pass: ""
 
+# [模式 "本地微软邮箱" 专属]
+local_microsoft:
+  # 是否开启无限裂变模式 (true/false)
+  enable_fission: false
+  # 裂变主邮箱（用来接收验证码）
+  master_email: ""
+  client_id: ""
+  refresh_token: ""
+  pool_fission: false
+
 # [模式 "freemail" 专属]
 freemail:
   #访问链接

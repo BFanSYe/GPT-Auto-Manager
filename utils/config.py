@@ -102,6 +102,12 @@ IMAP_PORT: int = 993
 IMAP_USER: str = ""
 IMAP_PASS: str = ""
 
+LOCAL_MS_ENABLE_FISSION: bool = False
+LOCAL_MS_POOL_FISSION: bool = False
+LOCAL_MS_MASTER_EMAIL: str = ""
+LOCAL_MS_CLIENT_ID: str = ""
+LOCAL_MS_REFRESH_TOKEN: str = ""
+
 FREEMAIL_API_URL: str = ""
 FREEMAIL_API_TOKEN: str = ""
 
@@ -219,6 +225,7 @@ def reload_all_configs():
     global EMAIL_API_MODE, MAIL_DOMAINS, GPTMAIL_BASE, ADMIN_AUTH
     global ENABLE_SUB_DOMAINS, SUB_DOMAIN_COUNT
     global IMAP_SERVER, IMAP_PORT, IMAP_USER, IMAP_PASS
+    global LOCAL_MS_ENABLE_FISSION, LOCAL_MS_POOL_FISSION, LOCAL_MS_MASTER_EMAIL, LOCAL_MS_CLIENT_ID, LOCAL_MS_REFRESH_TOKEN
     global FREEMAIL_API_URL, FREEMAIL_API_TOKEN
     global CM_API_URL, CM_ADMIN_EMAIL, CM_ADMIN_PASS
     global MC_API_BASE, MC_KEY
@@ -351,6 +358,13 @@ def reload_all_configs():
     IMAP_PORT        = _imap.get("port", 993)
     IMAP_USER        = _imap.get("user", "")
     IMAP_PASS        = _imap.get("pass", "")
+
+    _local_microsoft = _c.get("local_microsoft", {})
+    LOCAL_MS_ENABLE_FISSION = bool(_local_microsoft.get("enable_fission", False))
+    LOCAL_MS_POOL_FISSION = bool(_local_microsoft.get("pool_fission", False))
+    LOCAL_MS_MASTER_EMAIL = str(_local_microsoft.get("master_email", "")).strip()
+    LOCAL_MS_CLIENT_ID = str(_local_microsoft.get("client_id", "")).strip()
+    LOCAL_MS_REFRESH_TOKEN = str(_local_microsoft.get("refresh_token", "")).strip()
 
     _free            = _c.get("freemail", {})
     FREEMAIL_API_URL = str(_free.get("api_url", "")).strip().rstrip("/")

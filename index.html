@@ -481,6 +481,7 @@
                                     <option value="freemail">freemail</option>
                                     <option value="cloudmail">cloudmail</option>
                                     <option value="mail_curl">mail_curl</option>
+                                    <option value="local_microsoft">本地微软邮箱库</option>
                                     <option value="luckmail">luckmail (LuckMail 接码)</option>
                                     <option value="tempmail">Tempmail.lol</option>
                                     <option value="tempmail_org">tempmail_org</option>
@@ -706,6 +707,50 @@
                                     </div>
                                     <div class="text-[11px] text-rose-800 mt-4 font-bold bg-rose-50 border border-rose-100 p-3 rounded-lg leading-relaxed shadow-sm text-center">
                                         <a href="https://myaccount.google.com/apppasswords" class="text-blue-600 hover:text-blue-700 hover:underline flex items-center justify-center gap-1.5 text-sm" target="_blank"><span>🔗</span> 创建谷歌专属密码</a>
+                                    </div>
+                                </div>
+                                <div v-if="config.email_api_mode === 'local_microsoft' && config.local_microsoft" class="animate-fade-in space-y-4">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="text-xs font-black text-amber-800 bg-amber-100 px-3 py-1.5 rounded-md border border-amber-200 shadow-sm uppercase tracking-wider">当前模式</span>
+                                        <span class="text-sm font-black text-slate-700">本地微软邮箱库</span>
+                                    </div>
+                                    <label class="relative inline-flex p-4 bg-slate-50/80 rounded-xl border border-slate-200 items-center cursor-pointer w-full hover:bg-slate-100/80 transition-colors shadow-sm group">
+                                        <input type="checkbox" v-model="config.local_microsoft.enable_fission" class="sr-only peer">
+                                        <div class="relative w-11 h-6 shrink-0 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-indigo-600 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
+                                        <div class="ml-4 flex-1">
+                                            <span class="font-black text-slate-800 text-sm block tracking-wide">开启手动无限裂变</span>
+                                            <p class="mt-1 mb-0 text-xs text-slate-500 font-medium">关闭时使用本地邮箱池；开启后使用下方主邮箱自动生成别名注册。</p>
+                                        </div>
+                                    </label>
+                                    <label class="relative inline-flex p-4 bg-slate-50/80 rounded-xl border border-slate-200 items-center cursor-pointer w-full hover:bg-slate-100/80 transition-colors shadow-sm group" v-if="!config.local_microsoft.enable_fission">
+                                        <input type="checkbox" v-model="config.local_microsoft.pool_fission" class="sr-only peer">
+                                        <div class="relative w-11 h-6 shrink-0 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-indigo-600 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
+                                        <div class="ml-4 flex-1">
+                                            <span class="font-black text-slate-800 text-sm block tracking-wide">开启邮箱池分裂</span>
+                                            <p class="mt-1 mb-0 text-xs text-slate-500 font-medium">从已导入的微软邮箱库中优先选择邮箱并生成别名轮用。</p>
+                                        </div>
+                                    </label>
+                                    <div>
+                                        <label class="block text-slate-700 text-xs font-extrabold mb-1.5 uppercase tracking-wider">全局 Client ID</label>
+                                        <input type="text" v-model="config.local_microsoft.client_id" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm font-mono text-sm" placeholder="如导入账号自带 client_id 这里可留空">
+                                    </div>
+                                    <div v-if="config.local_microsoft.enable_fission">
+                                        <label class="block text-slate-700 text-xs font-extrabold mb-1.5 uppercase tracking-wider">裂变主邮箱</label>
+                                        <input type="text" v-model="config.local_microsoft.master_email" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm font-mono text-sm" placeholder="例如 example@outlook.com">
+                                    </div>
+                                    <div>
+                                        <label class="block text-slate-700 text-xs font-extrabold mb-1.5 uppercase tracking-wider">Refresh Token</label>
+                                        <div class="relative">
+                                            <input :type="showPwd.master_rt ? 'text' : 'password'" v-model="config.local_microsoft.refresh_token" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-2.5 px-3 pr-10 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm font-mono text-sm" placeholder="Microsoft Graph refresh_token">
+                                            <button @click="showPwd.master_rt = !showPwd.master_rt" class="absolute right-3 top-1/2 -translate-y-1/2 text-lg text-slate-400 hover:text-amber-600 focus:outline-none transition-transform hover:scale-110">
+                                                {{ showPwd.master_rt ? '👁️' : '🙈' }}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div class="text-[11px] text-sky-800 mt-3 font-bold bg-sky-50 border border-sky-100 p-3 rounded-lg leading-relaxed shadow-sm">
+                                        <p>说明：</p>
+                                        <p class="mt-1">1. 关闭“手动无限裂变”时，系统从本地微软邮箱库提取账号。</p>
+                                        <p class="mt-1">2. 开启后，系统将使用主邮箱 + Graph refresh_token 自动生成别名注册。</p>
                                     </div>
                                 </div>
                                 <div v-if="config.email_api_mode === 'Gmail_OAuth'" class="mt-8 border-t-2 border-dashed border-slate-200 pt-8 animate-fade-in">
