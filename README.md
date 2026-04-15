@@ -2,13 +2,14 @@
 
 一个基于上游 `wenfxl/openai-cpa` 深度整理的 **中文增强版 Web 控制台项目**。
 
-当前公开整理版本基于上游 `v10.0.7`，并保留了已经在实际环境中验证过的增强能力，重点优化了：
+当前公开整理版本基于上游 `v10.1.0`，并保留了已经在实际环境中验证过的增强能力，重点优化了：
 
 - 中文使用体验与文档
 - Web 面板可维护性
 - Clash / Mihomo 代理池能力
 - HTTP 动态代理池调度
 - LuckMail 私有池 / 本地微软邮箱 / Temporam 兼容
+- Fvia / Inboxes / TemporaryMail / Tmailor 邮箱接入
 - CPA / Sub2API 仓管与巡检
 
 > 当前仓库适合作为“可二次复用的公开源码基线”。
@@ -62,6 +63,7 @@
 - LuckMail 私有上传邮箱池模式
 - 本地微软邮箱库 / Graph 取码
 - Temporam 支持
+- Fvia / Inboxes / TemporaryMail / Tmailor 支持
 - DuckMail / IMAP / freemail / cloudmail / mail_curl / Gmail OAuth 等多后端
 - 多域名轮换与多级子域名生成
 
@@ -80,15 +82,23 @@
 
 当前公开整理基线：
 
-- 上游基础：`v10.0.7`
-- 当前公开热修版本：`v10.0.7-bfansye-hotfix3`
+- 上游基础：`v10.1.0`
+- 当前公开热修版本：`v10.1.0-bfansye-hotfix1`
 
 本轮整理额外完成：
 
+- 合并上游 `v10.0.8` / `v10.0.9` / `v10.1.0`
+- 新增邮箱模式接入：
+  - `fvia`
+  - `inboxes`
+  - `temporarymail`
+  - `tmailor`
+- 同步本地微软邮箱旧 IMAP 令牌兼容修复
 - 合并并上移代理页中的 Clash 两个板块
 - 新增“系统当前实际生效订阅入口”展示
 - 新增“默认路由对齐状态”展示
 - 新增“各实例当前生效链路”展示
+- 新增“开启智能切点”与“HTTP 动态代理池”双向互斥保护
 - 补齐公开仓库所需中文文档
 - 调整公开仓库默认 `docker-compose.yml` 为更易复用的本地构建方式
 - 将集群默认密钥改为占位符，避免公共仓库带弱默认值
