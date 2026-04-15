@@ -435,7 +435,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
         s_reg.get(oauth_reg.auth_url, proxies=proxies, verify=_ssl_verify(), timeout=15)
         did = s_reg.cookies.get("oai-did") or ""
         if not did:
-            print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）未获取到 oai-did，节点环境可能被关注。")
+            print(f"[{cfg.ts()}] [WARNING] （{mask_email(email)}）未获取到 oai-did，节点环境可能被关注，请更换IP或节点。")
 
         current_ua = s_reg.headers.get("User-Agent")
 
@@ -612,7 +612,7 @@ def run(proxy: Optional[str], run_ctx: dict = None) -> tuple:
 
         if create_account_resp.status_code != 200:
             run_ctx['signup_blocked'] = True
-            print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）账户创建受阻，返回: {create_account_resp.status_code}，该提示可忽略，不影响后面执行流程")
+            print(f"[{cfg.ts()}] [ERROR] （{mask_email(email)}）账户创建受阻，疑似被标记为账号已存在，返回: {create_account_resp.status_code}，该提示可忽略，不影响后面执行流程")
             return None, None
 
         try:

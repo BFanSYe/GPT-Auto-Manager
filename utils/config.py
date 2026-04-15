@@ -222,6 +222,8 @@ CLUSTER_NODE_NAME: str = ""
 CLUSTER_MASTER_URL: str = ""
 CLUSTER_SECRET: str = "change-me-cluster-secret"
 TEMPORAM_COOKIE: str = ""
+FVIA_TOKEN: str = ""
+TMAILOR_CURRENT_TOKEN: str = ""
 REG_MODE: str = "protocol"
 
 def reload_all_configs():
@@ -260,6 +262,8 @@ def reload_all_configs():
     global TG_BOT
     global TEMPORAM_COOKIE
     global REG_MODE
+    global TMAILOR_CURRENT_TOKEN
+    global FVIA_TOKEN
     global DUCKMAIL_API_URL, DUCKMAIL_DOMAIN, DUCKMAIL_MODE, DUCK_API_TOKEN, DUCK_COOKIE, DUCK_OFFICIAL_API_BASE
     global DUCKMAIL_FORWARD_MODE, DUCKMAIL_FORWARD_EMAIL
     global DUCK_USE_PROXY
@@ -576,6 +580,12 @@ def reload_all_configs():
 
     _temporam = _c.get("temporam", {})
     TEMPORAM_COOKIE = str(_temporam.get("cookie") or "").strip()
+
+    _tmailor = _c.get("tmailor", {})
+    TMAILOR_CURRENT_TOKEN = str(_tmailor.get("current_token") or "").strip()
+
+    _fvia = _c.get("fvia", {})
+    FVIA_TOKEN = str(_fvia.get("token") or "").strip()
     reload_proxy_config()
     print(f"[{ts()}] [系统] 核心配置已完成同步。")
 

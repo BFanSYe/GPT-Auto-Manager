@@ -488,6 +488,10 @@
                                     <option value="duckmail">duckmail (DuckMail 鸭子邮箱)</option>
                                     <option value="generator_email">generator_email</option>
                                     <option value="temporam">Temporam.com (需填Cookie)</option>
+                                    <option value="tmailor">Tmailor.com (需填token)</option>
+                                    <option value="fvia">FviaInboxes (需填authorization)</option>
+                                    <option value="inboxes">Inboxes.com</option>
+                                    <option value="temporarymail">TemporaryMail.com</option>
                                 </select>
 
                                 <label class="block text-slate-700 text-sm font-extrabold mb-1 mt-6">发信域名池 (mail_domains)</label>
@@ -752,6 +756,59 @@
                                         <p>说明：</p>
                                         <p class="mt-1">1. 关闭“手动无限裂变”时，系统从本地微软邮箱库提取账号。</p>
                                         <p class="mt-1">2. 开启后，系统将使用主邮箱 + Graph refresh_token 自动生成别名注册。</p>
+                                    </div>
+                                </div>
+                                <div v-if="config.email_api_mode === 'fvia' && config.fvia" class="animate-fade-in space-y-4">
+                                    <div class="flex items-center gap-2 mb-4">
+                                        <span class="text-xs font-black text-amber-800 bg-amber-100 px-3 py-1.5 rounded-md border border-amber-200 shadow-sm uppercase tracking-wider">当前模式</span>
+                                        <span class="text-sm font-black text-slate-700">FviaInboxes.com</span>
+                                    </div>
+                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 p-4 rounded-xl leading-relaxed shadow-sm">
+                                        <p class="flex items-center gap-1.5 text-sm"><span>✅</span> 已完美接入 FviaInboxes.com</p>
+                                        <p class="mt-2 text-emerald-700 opacity-90">请在浏览器中访问 https://FviaInboxes.com/，F12打开开发者工具，点击Get Email，复制messages请求里的authorization：Bearer后面的字符串内容。</p>
+                                        <p class="mt-3 text-rose-600 font-black bg-rose-50/50 p-2 rounded-lg border border-rose-100">🔥 提示：建议务必开启左侧的【获取邮箱使用全局代理穿透】！</p>
+                                    </div>
+
+                                    <div>
+                                        <label class="block text-slate-700 text-xs font-extrabold mb-1.5 uppercase tracking-wider">Fvia Bearer Token (全局凭证)</label>
+                                        <div class="relative">
+                                            <input :type="showPwd.fvia_token ? 'text' : 'password'"
+                                                   v-model="config.fvia.token"
+                                                   class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-3 pl-3 pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors shadow-sm font-mono text-xs placeholder:text-slate-300"
+                                                   placeholder="af2b556e... (填入你抓到的 64 位 Token)">
+
+                                            <button type="button" @click="showPwd.fvia_token = !showPwd.fvia_token" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-indigo-600 transition-colors">
+                                                <svg v-if="!showPwd.fvia_token" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                                <svg v-else class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="config.email_api_mode === 'inboxes'" class="animate-fade-in space-y-4">
+                                    <div class="flex items-center gap-2 mb-4">
+                                        <span class="text-xs font-black text-amber-800 bg-amber-100 px-3 py-1.5 rounded-md border border-amber-200 shadow-sm uppercase tracking-wider">当前模式</span>
+                                        <span class="text-sm font-black text-slate-700">Inboxes.com</span>
+                                    </div>
+                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 p-4 rounded-xl leading-relaxed shadow-sm">
+                                        <p class="flex items-center gap-1.5 text-sm"><span>✅</span> 这是一个免费的公开临时邮箱</p>
+                                        <p class="mt-2 text-emerald-700 opacity-90">系统已内置所有对接逻辑，无需您填写任何 API Key、账号或密码，选中后即可直接使用！</p>
+                                        <p class="mt-3 text-rose-600 font-black bg-rose-50/50 p-2 rounded-lg border border-rose-100">🔥 提示：建议务必开启左侧的【获取邮箱使用全局代理穿透】！</p>
+                                    </div>
+                                </div>
+                                <div v-if="config.email_api_mode === 'temporarymail'" class="animate-fade-in space-y-4">
+                                    <div class="flex items-center gap-2 mb-4">
+                                        <span class="text-xs font-black text-amber-800 bg-amber-100 px-3 py-1.5 rounded-md border border-amber-200 shadow-sm uppercase tracking-wider">当前模式</span>
+                                        <span class="text-sm font-black text-slate-700">temporarymail.com</span>
+                                    </div>
+                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 p-4 rounded-xl leading-relaxed shadow-sm">
+                                        <p class="flex items-center gap-1.5 text-sm"><span>✅</span> 这是一个免费的公开临时邮箱</p>
+                                        <p class="mt-2 text-emerald-700 opacity-90">系统已内置所有对接逻辑，无需您填写任何 API Key、账号或密码，选中后即可直接使用！</p>
+                                        <p class="mt-3 text-rose-600 font-black bg-rose-50/50 p-2 rounded-lg border border-rose-100">🔥 提示：建议务必开启左侧的【获取邮箱使用全局代理穿透】！</p>
                                     </div>
                                 </div>
                                 <div v-if="config.email_api_mode === 'Gmail_OAuth'" class="mt-8 border-t-2 border-dashed border-slate-200 pt-8 animate-fade-in">
@@ -1037,6 +1094,38 @@
                                         <label class="block text-slate-700 text-xs font-extrabold mb-1.5 uppercase tracking-wider">抓取的 Cookie 字符串</label>
                                         <div class="relative">
                                             <textarea v-model="config.temporam.cookie" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-3 px-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm font-mono text-xs h-28 placeholder:text-slate-300" placeholder="例如: remember_web_59ba...; XSRF-TOKEN=..."></textarea>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="config.email_api_mode === 'tmailor' && config.tmailor" class="space-y-4 mt-2 animate-fade-in">
+                                    <div class="flex items-center gap-2 mb-4">
+                                        <span class="text-xs font-black text-amber-800 bg-amber-100 px-3 py-1.5 rounded-md border border-amber-200 shadow-sm uppercase tracking-wider">当前模式</span>
+                                        <span class="text-sm font-black text-slate-700">Tmailor.com</span>
+                                    </div>
+                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 p-4 rounded-xl leading-relaxed shadow-sm">
+                                        <p class="flex items-center gap-1.5 text-sm"><span>✅</span> 已完美接入 Tmailor.com 解密接口</p>
+                                        <p class="mt-2 text-emerald-700 opacity-90">请在浏览器中访问 https://tmailor.com/，点击Access Details，复制初始Access Token字符串填入下方。</p>
+                                        <p class="mt-3 text-rose-600 font-black bg-rose-50/50 p-2 rounded-lg border border-rose-100">🔥 提示：建议务必开启左侧的【获取邮箱使用全局代理穿透】！</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-slate-700 text-xs font-extrabold mb-1.5 uppercase tracking-wider">curentToken (初始凭证)</label>
+                                        <div class="relative">
+                                            <input :type="showPwd.tmailor_token ? 'text' : 'password'"
+                                                   v-model="config.tmailor.current_token"
+                                                   class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-lg py-3 pl-3 pr-10 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-colors shadow-sm font-mono text-xs placeholder:text-slate-300"
+                                                   placeholder="eyJ0eXAiOiJKV... (填入你抓到的 token)">
+
+                                            <button type="button"
+                                                    @click="showPwd.tmailor_token = !showPwd.tmailor_token"
+                                                    class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-amber-600 focus:outline-none transition-colors">
+                                                <svg v-if="!showPwd.tmailor_token" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                                </svg>
+                                                <svg v-else class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                                </svg>
+                                            </button>
                                         </div>
                                     </div>
                                 </div>

@@ -932,12 +932,13 @@ async def stop_task(token: str = Depends(verify_token)):
     avg_time = round(elapsed_time / stats["success"], 1) if stats["success"] > 0 else 0.0
     target_str = stats["target"] if stats["target"] > 0 else "∞"
     template_str = getattr(core_engine.cfg, 'TG_BOT', {}).get("template_stop", "🛑 停止：成功 {success}/{target}")
+    pwd_blocked = stats["pwd_blocked"] if stats["pwd_blocked"] > 0 else 0
+    phone_blocked = stats["phone_verify"] if stats["phone_verify"] > 0 else 0
 
     try:
         msg = template_str.format(success_rate=success_rate, success=stats['success'], target=target_str,
                                   failed=stats['failed'], retries=stats['retries'], elapsed_time=elapsed_time,
-                                  avg_time=avg_time, pwd_blocked=stats.get('pwd_blocked', 0),
-                                  phone_verify=stats.get('phone_verify', 0))
+                                  pwd_blocked=pwd_blocked, phone_verify=phone_blocked, avg_time=avg_time)
     except Exception:
         msg = f"⚠️ TG 模板渲染出错：未知的变量格式。\n请检查配置面板中的模板变量是否正确填写。"
 
