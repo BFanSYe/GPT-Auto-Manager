@@ -45,7 +45,8 @@ run_stats = {
     "start_time": 0,
     "target": 0,
     "pwd_blocked": 0,
-    "phone_verify": 0
+    "phone_verify": 0,
+    "ext_is_running": False
 }
 KNOWN_CLIPROXY_ERROR_LABELS = {
     "usage_limit_reached":  "周限额已耗尽",

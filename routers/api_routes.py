@@ -16,7 +16,7 @@ import httpx
 from fastapi import APIRouter, Depends, Header, Query, Request, WebSocket, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 
 from cloudflare import Cloudflare
 from utils import core_engine, db_manager
@@ -25,7 +25,7 @@ from utils.integrations.sub2api_client import Sub2APIClient
 from utils.integrations.tg_notifier import send_tg_msg_async
 from utils.email_providers.gmail_oauth_handler import GmailOAuthHandler
 
-from global_state import VALID_TOKENS, CLUSTER_NODES, NODE_COMMANDS, cluster_lock, log_history, engine, verify_token
+from global_state import VALID_TOKENS, CLUSTER_NODES, NODE_COMMANDS, cluster_lock, log_history, engine, verify_token, worker_status
 import utils.config as cfg
 
 router = APIRouter()
@@ -83,6 +83,19 @@ class ClusterControlReq(BaseModel): node_name: str; action: str
 
 
 class ClashPoolUpdateReq(BaseModel): sub_url: str
+
+
+class ExtResultReq(BaseModel):
+    status: str
+    task_id: Optional[str] = ""
+    email: Optional[str] = ""
+    password: Optional[str] = ""
+    error_msg: Optional[str] = ""
+    token_data: Optional[str] = ""
+    callback_url: Optional[str] = ""
+    code_verifier: Optional[str] = ""
+    expected_state: Optional[str] = ""
+    error_type: Optional[str] = "failed"
 
 
 # ==========================================
@@ -896,7 +909,8 @@ async def login(data: LoginData):
 
 @router.get("/api/status")
 async def get_status(token: str = Depends(verify_token)):
-    return {"is_running": engine.is_running()}
+    ext_running = bool(getattr(core_engine.cfg, "REG_MODE", "protocol") == "extension" and core_engine.run_stats.get("ext_is_running"))
+    return {"is_running": engine.is_running() or ext_running}
 
 @router.post("/api/start")
 async def start_task(token: str = Depends(verify_token)):
@@ -906,9 +920,12 @@ async def start_task(token: str = Depends(verify_token)):
     except Exception as e:
         print(f"[{core_engine.ts()}] [警告] 启动重载提示: {e}")
 
+    if getattr(core_engine.cfg, 'REG_MODE', 'protocol') == 'extension':
+        return {"status": "error", "message": "当前为古法插件模式，请使用前端【古法】模式和浏览器插件启动。"}
+
     default_proxy = getattr(core_engine.cfg, 'DEFAULT_PROXY', None)
     args = DummyArgs(proxy=default_proxy if default_proxy else None)
-    core_engine.run_stats.update({"success": 0, "failed": 0, "retries": 0, "pwd_blocked": 0, "phone_verify": 0, "start_time": time.time()})
+    core_engine.run_stats.update({"success": 0, "failed": 0, "retries": 0, "pwd_blocked": 0, "phone_verify": 0, "start_time": time.time(), "ext_is_running": False})
     if getattr(core_engine.cfg, 'ENABLE_CPA_MODE', False):
         core_engine.run_stats["target"] = 0
         engine.start_cpa(args)
@@ -950,7 +967,9 @@ async def stop_task(token: str = Depends(verify_token)):
 @router.get("/api/stats")
 async def get_stats(token: str = Depends(verify_token)):
     stats = core_engine.run_stats
-    is_running = engine.is_running()
+    current_reg_mode = getattr(core_engine.cfg, 'REG_MODE', 'protocol')
+    ext_running = bool(current_reg_mode == 'extension' and stats.get("ext_is_running"))
+    is_running = engine.is_running() or ext_running
 
     if is_running:
         elapsed = round(time.time() - stats["start_time"], 1) if stats.get("start_time", 0) > 0 else 0
@@ -968,8 +987,11 @@ async def get_stats(token: str = Depends(verify_token)):
     elif stats["success"] > 0:
         progress_pct = 100
 
-    current_mode = "CPA 仓管" if getattr(core_engine.cfg, 'ENABLE_CPA_MODE', False) else (
-        "Sub2Api 仓管" if getattr(core_engine.cfg, 'ENABLE_SUB2API_MODE', False) else "常规量产")
+    if current_reg_mode == 'extension':
+        current_mode = "插件托管 (古法)"
+    else:
+        current_mode = "CPA 仓管" if getattr(core_engine.cfg, 'ENABLE_CPA_MODE', False) else (
+            "Sub2Api 仓管" if getattr(core_engine.cfg, 'ENABLE_SUB2API_MODE', False) else "常规量产")
 
     return {
         "success": stats["success"], "failed": stats["failed"], "retries": stats["retries"],
@@ -986,6 +1008,133 @@ async def start_check_api(token: str = Depends(verify_token)):
     default_proxy = getattr(core_engine.cfg, 'DEFAULT_PROXY', None)
     engine.start_check(DummyArgs(proxy=default_proxy if default_proxy else None))
     return {"code": 200, "message": "独立测活指令已下发！"}
+
+
+@router.get("/api/ext/generate_task")
+def ext_generate_task(token: str = Depends(verify_token)):
+    from utils.email_providers.mail_service import mask_email, get_email_and_token, clear_sticky_domain
+    from utils.register import _generate_password, generate_random_user_info, generate_oauth_url
+    import utils.config as cfg_local
+
+    print(f"[{cfg_local.ts()}] [INFO] 正在进行插件古法注册模式，请稍后...")
+    try:
+        cfg_local.GLOBAL_STOP = False
+        clear_sticky_domain()
+
+        email = None
+        email_jwt = None
+        for _ in range(3):
+            print(f"[{cfg_local.ts()}] [INFO] 正在进行邮箱创建...")
+            email, email_jwt = get_email_and_token(proxies=None)
+            if email:
+                break
+            time.sleep(1.5)
+
+        if not email:
+            return {"status": "error", "message": "邮箱获取超时或暂无库存，请稍候"}
+
+        user_info = generate_random_user_info()
+        password = _generate_password()
+        oauth_reg = generate_oauth_url()
+        print(f"[{cfg_local.ts()}] [INFO] （{mask_email(email)}）下发古法任务数据 (昵称: {user_info['name']})...")
+
+        name_parts = user_info['name'].split(' ')
+        return {
+            "status": "success",
+            "task_data": {
+                "email": email,
+                "email_jwt": email_jwt,
+                "password": password,
+                "firstName": name_parts[0] if len(name_parts) > 0 else "John",
+                "lastName": name_parts[1] if len(name_parts) > 1 else "Doe",
+                "birthday": user_info['birthdate'],
+                "registerUrl": oauth_reg.auth_url,
+                "code_verifier": oauth_reg.code_verifier,
+                "expected_state": oauth_reg.state
+            }
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"任务生成失败: {str(e)}"}
+
+
+@router.get("/api/ext/get_mail_code")
+def ext_get_mail_code(email: str, email_jwt: str = "", type: str = "signup", max_attempts: int = 20, token: str = Depends(verify_token)):
+    from utils.email_providers.mail_service import get_oai_code
+    try:
+        code = get_oai_code(email, jwt=email_jwt, proxies=None, max_attempts=max_attempts)
+        if code:
+            return {"status": "success", "code": code}
+        return {"status": "pending"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@router.post("/api/ext/submit_result")
+def ext_submit_result(req: ExtResultReq, token: str = Depends(verify_token)):
+    from utils.register import submit_callback_url
+
+    if req.status == "success":
+        token_json = req.token_data
+        if not token_json and req.callback_url:
+            try:
+                token_json = submit_callback_url(
+                    callback_url=req.callback_url,
+                    expected_state=req.expected_state or "",
+                    code_verifier=req.code_verifier or ""
+                )
+            except Exception as e:
+                print(f"[{core_engine.ts()}] [ERROR] 古法模式换取 Token 失败: {e}")
+                return {"status": "error", "message": "Token 换取失败"}
+
+        if not token_json:
+            return {"status": "error", "message": "插件未返回有效 Token 数据"}
+
+        db_manager.save_account_to_db(req.email, req.password, token_json)
+        core_engine.run_stats['success'] = core_engine.run_stats.get('success', 0) + 1
+        return {"status": "success", "message": "战利品已入库"}
+
+    core_engine.run_stats['failed'] = core_engine.run_stats.get('failed', 0) + 1
+    if req.error_type == 'phone_verify':
+        core_engine.run_stats['phone_verify'] = core_engine.run_stats.get('phone_verify', 0) + 1
+    elif req.error_type == 'pwd_blocked':
+        core_engine.run_stats['pwd_blocked'] = core_engine.run_stats.get('pwd_blocked', 0) + 1
+    return {"status": "success", "message": "异常统计已录入看板"}
+
+
+@router.post("/api/ext/heartbeat")
+def ext_heartbeat(worker_id: str, token: str = Depends(verify_token)):
+    worker_status[worker_id] = time.time()
+    return {"status": "success", "message": "ok"}
+
+
+@router.get("/api/ext/check_node")
+def check_node_status(worker_id: str, token: str = Depends(verify_token)):
+    last_seen = worker_status.get(worker_id)
+    if not last_seen:
+        return {"status": "success", "online": False, "reason": "never_connected"}
+    is_online = (time.time() - last_seen) < 15
+    return {"status": "success", "online": is_online, "last_seen": last_seen}
+
+
+@router.post("/api/ext/reset_stats")
+def ext_reset_stats(token: str = Depends(verify_token)):
+    core_engine.run_stats.update({
+        "success": 0,
+        "failed": 0,
+        "retries": 0,
+        "pwd_blocked": 0,
+        "phone_verify": 0,
+        "start_time": time.time(),
+        "target": getattr(core_engine.cfg, 'NORMAL_TARGET_COUNT', 0),
+        "ext_is_running": True
+    })
+    return {"status": "success"}
+
+
+@router.post("/api/ext/stop")
+def ext_stop(token: str = Depends(verify_token)):
+    core_engine.run_stats["ext_is_running"] = False
+    return {"status": "success"}
 
 
 @router.post("/api/system/restart")

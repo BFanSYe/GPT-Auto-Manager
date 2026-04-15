@@ -120,6 +120,7 @@ createApp({
             currentCloudDetail: null,
             nowTimestamp: Math.floor(Date.now() / 1000),
             clusterNodes: {},
+            isExtConnected: false,
         };
     },
     mounted() {
@@ -208,13 +209,21 @@ createApp({
                 this.evtSource = null;
             }
             if(this.statsTimer) clearInterval(this.statsTimer);
+            if (this._extDetectionTimer) clearInterval(this._extDetectionTimer);
+            if (this._extDispatchTimer) clearTimeout(this._extDispatchTimer);
+            this._extDetectionTimer = null;
+            this._extDispatchTimer = null;
+            this.isExtConnected = false;
         },
-        initApp() {
-            this.fetchConfig();
+        async initApp() {
+            await this.fetchConfig();
             this.fetchAccounts();
             this.initSSE();
             this.startStatsPolling();
             this.checkUpdate();
+            if (this.config && this.config.reg_mode === 'extension') {
+                this.listenToExtension();
+            }
             if (this.currentTab === 'proxy') {
                 this.fetchClashPoolInfo();
             }
@@ -668,16 +677,284 @@ createApp({
             if (event.target.checked) this.selectedAccounts = [...this.accounts];
             else this.selectedAccounts = [];
         },
+        async dispatchExtensionTask() {
+            if (!this.isRunning) return;
+            try {
+                const res = await this.authFetch('/api/ext/generate_task');
+                const data = await res.json();
+                if (!this.isRunning) {
+                    this.showToast("任务已生成，但系统已停止，已丢弃该任务。", "warning");
+                    return;
+                }
+
+                const now = new Date();
+                const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false });
+
+                if (data.status !== 'success') {
+                    this.logs.push({
+                        parsed: true,
+                        time: timeStr,
+                        level: '总控',
+                        text: `任务生成失败: ${data.message}`,
+                        raw: `[${timeStr}] [总控] 任务生成失败: ${data.message}`
+                    });
+                    return;
+                }
+
+                const task = data.task_data;
+                const taskId = "TASK_" + Date.now();
+                this.logs.push({
+                    parsed: true,
+                    time: timeStr,
+                    level: '总控',
+                    text: `📦 古法任务已打包，目标邮箱: ${task.email}，正在下发到浏览器插件...`,
+                    raw: `[${timeStr}] [总控] 📦 古法任务已打包，目标邮箱: ${task.email}，正在下发到浏览器插件...`
+                });
+
+                this.$nextTick(() => {
+                    const container = document.getElementById('terminal-container');
+                    if (container) container.scrollTop = container.scrollHeight;
+                });
+
+                window.postMessage({
+                    type: "CMD_EXECUTE_TASK",
+                    payload: {
+                        taskId: taskId,
+                        apiUrl: window.location.origin,
+                        token: localStorage.getItem('auth_token'),
+                        email: task.email,
+                        email_jwt: task.email_jwt,
+                        password: task.password,
+                        firstName: task.firstName,
+                        lastName: task.lastName,
+                        birthday: task.birthday,
+                        registerUrl: task.registerUrl,
+                        code_verifier: task.code_verifier,
+                        expected_state: task.expected_state
+                    }
+                }, "*");
+            } catch (error) {
+                const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                this.logs.push({
+                    parsed: true,
+                    time: timeStr,
+                    level: '总控',
+                    text: `下发古法任务异常: ${error.message}`,
+                    raw: `[${timeStr}] [总控] 下发古法任务异常: ${error.message}`
+                });
+            }
+        },
+        syncTokenToExtension() {
+            const localWorkerId = localStorage.getItem('local_worker_id');
+            if (!localWorkerId) return;
+            window.postMessage({
+                type: "CMD_INIT_NODE",
+                payload: {
+                    apiUrl: window.location.origin,
+                    token: localStorage.getItem('auth_token'),
+                    workerId: localWorkerId
+                }
+            }, "*");
+            console.log(`📡 [总控] 身份同步指令已下发: ${localWorkerId}`);
+        },
+        listenToExtension() {
+            if (this.config?.reg_mode !== 'extension') return;
+            if (this._hasExtensionListener) {
+                this.syncTokenToExtension();
+                return;
+            }
+
+            this._hasExtensionListener = true;
+            this.isExtConnected = false;
+
+            window.addEventListener("message", async (event) => {
+                if (!event.data) return;
+
+                if (event.data.type === "WORKER_READY") {
+                    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                    if (this._extDetectionTimer) {
+                        clearInterval(this._extDetectionTimer);
+                        this._extDetectionTimer = null;
+                    }
+
+                    this.isExtConnected = true;
+                    let localWorkerId = localStorage.getItem('local_worker_id');
+                    if (!localWorkerId) {
+                        localWorkerId = 'Node-' + Math.random().toString(36).substring(2, 6).toUpperCase();
+                        localStorage.setItem('local_worker_id', localWorkerId);
+                    }
+
+                    this.logs.push({
+                        parsed: true,
+                        time: timeStr,
+                        level: '总控',
+                        text: `✅ 浏览器插件已连接，节点识别码: ${localWorkerId}`,
+                        raw: `[${timeStr}] [总控] ✅ 浏览器插件已连接，节点识别码: ${localWorkerId}`
+                    });
+                    this.$nextTick(() => {
+                        const container = document.getElementById('terminal-container');
+                        if (container) container.scrollTop = container.scrollHeight;
+                    });
+                    this.syncTokenToExtension();
+                    return;
+                }
+
+                if (event.data.type === "WORKER_LOG_REPLY") {
+                    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                    this.logs.push({
+                        parsed: true,
+                        time: timeStr,
+                        level: '节点',
+                        text: event.data.log,
+                        raw: `[${timeStr}] [节点] ${event.data.log}`
+                    });
+                    this.$nextTick(() => {
+                        const container = document.getElementById('terminal-container');
+                        if (container) container.scrollTop = container.scrollHeight;
+                    });
+                    return;
+                }
+
+                if (event.data.type === "WORKER_RESULT_REPLY") {
+                    const result = event.data.result;
+                    try {
+                        await this.authFetch('/api/ext/submit_result', {
+                            method: 'POST',
+                            body: JSON.stringify(result)
+                        });
+                    } catch (e) {
+                        console.error("古法统计上报失败", e);
+                    }
+
+                    if (result.status === 'success') {
+                        this.showToast(`🎉 收到古法节点捷报！注册成功！`, "success");
+                    } else {
+                        this.showToast(`❌ 古法节点汇报失败: ${result.error_msg}`, "error");
+                    }
+
+                    if (this.isRunning) {
+                        const targetCount = this.config?.normal_mode?.target_count || 0;
+                        if (targetCount > 0 && this.stats && this.stats.success >= targetCount) {
+                            this.showToast(`🎯 已达到目标产出数量 (${targetCount})，自动停止古法调度！`, "success");
+                            await this.stopExtensionTask(false);
+                            const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                            this.logs.push({
+                                parsed: true,
+                                time: timeStr,
+                                level: '总控',
+                                text: `🛑 古法目标产量已达成，总控引擎已自动挂起。`,
+                                raw: `[${timeStr}] [总控] 🛑 古法目标产量已达成，总控引擎已自动挂起。`
+                            });
+                            return;
+                        }
+
+                        this.showToast(`准备下发下一个古法插件任务...`, "info");
+                        this._extDispatchTimer = setTimeout(() => {
+                            this._extDispatchTimer = null;
+                            this.dispatchExtensionTask();
+                        }, 4000);
+                    }
+                }
+            });
+
+            if (this._extDetectionTimer) clearInterval(this._extDetectionTimer);
+            this._extDetectionTimer = setInterval(() => {
+                if (this.config?.reg_mode === 'extension' && !this.isExtConnected) {
+                    window.postMessage({ type: "CHECK_EXTENSION_READY" }, "*");
+                } else if (this.config?.reg_mode !== 'extension') {
+                    clearInterval(this._extDetectionTimer);
+                    this._extDetectionTimer = null;
+                }
+            }, 2000);
+        },
+        async changeRegMode(mode) {
+            if (!this.config) return;
+            if (mode === this.config.reg_mode) return;
+            this.config.reg_mode = mode;
+            await this.saveConfig();
+            this.showToast(`模式已切换为: ${mode === 'protocol' ? '纯协议模式' : '古法插件模式'}`, 'info');
+
+            if (mode === 'extension') {
+                this.listenToExtension();
+            } else {
+                if (this._extDetectionTimer) {
+                    clearInterval(this._extDetectionTimer);
+                    this._extDetectionTimer = null;
+                }
+                this.isExtConnected = false;
+                window.postMessage({ type: "CMD_STOP_WORKER" }, "*");
+                await this.authFetch('/api/ext/stop', { method: 'POST' }).catch(() => {});
+            }
+        },
+        async startExtensionTask() {
+            if (this.config?.cpa_mode?.enable || this.config?.sub2api_mode?.enable) {
+                this.showToast("古法插件模式当前仅支持常规量产模式，请先关闭 CPA / Sub2API 仓管。", "warning");
+                return;
+            }
+            this.showToast("📡 正在探测插件节点在线状态...", "info");
+            try {
+                const localId = localStorage.getItem('local_worker_id') || 'Node-Pilot-01';
+                const checkRes = await this.authFetch(`/api/ext/check_node?worker_id=${localId}`);
+                const checkData = await checkRes.json();
+                if (!checkData.online) {
+                    const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                    this.showToast(`🚫 启动失败：插件节点 [${localId}] 未连接或已掉线！`, "error");
+                    this.logs.push({
+                        parsed: true,
+                        time: timeStr,
+                        level: '系统',
+                        text: '🛑 请确认已安装 plugin/openai-cpa-plugin.zip 浏览器插件，并强制刷新当前页面！',
+                        raw: `[${timeStr}] [系统] 🛑 请确认已安装 plugin/openai-cpa-plugin.zip 浏览器插件，并强制刷新当前页面！`
+                    });
+                    return;
+                }
+            } catch (e) {
+                this.showToast("🚫 无法连接到后端检查插件节点状态", "error");
+                return;
+            }
+
+            this.isRunning = true;
+            this.currentTab = 'console';
+            await this.authFetch('/api/ext/reset_stats', { method: 'POST' }).catch(() => {});
+            this.pollStats();
+            this.showToast("✅ 插件节点在线，已启动【古法插件模式】", "success");
+            await this.dispatchExtensionTask();
+        },
+        async stopExtensionTask(showToast = true) {
+            this.isRunning = false;
+            if (this._extDispatchTimer) {
+                clearTimeout(this._extDispatchTimer);
+                this._extDispatchTimer = null;
+            }
+            window.postMessage({ type: "CMD_STOP_WORKER" }, "*");
+            await this.authFetch('/api/ext/stop', { method: 'POST' }).catch(() => {});
+            if (showToast) {
+                this.showToast("已向古法插件发送停止指令", "info");
+            }
+            const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            this.logs.push({
+                parsed: true,
+                time: timeStr,
+                level: '系统',
+                text: '🛑 已向浏览器插件发送停止指令，等待节点清场。',
+                raw: `[${timeStr}] [系统] 🛑 已向浏览器插件发送停止指令，等待节点清场。`
+            });
+        },
 
 		async toggleSystem() {
-			if (this.isRunning) {
-				await this.stopTask();
-			} else {
-				let mode = 'normal';
-				if (this.config?.cpa_mode?.enable) mode = 'cpa';
-				if (this.config?.sub2api_mode?.enable) mode = 'sub2api';
-				await this.startTask(mode);
-			}
+			if (this.config?.reg_mode === 'extension') {
+                if (this.isRunning) await this.stopExtensionTask();
+                else await this.startExtensionTask();
+                return;
+            }
+            if (this.isRunning) {
+                await this.stopTask();
+            } else {
+                let mode = 'normal';
+                if (this.config?.cpa_mode?.enable) mode = 'cpa';
+                if (this.config?.sub2api_mode?.enable) mode = 'sub2api';
+                await this.startTask(mode);
+            }
 		},
         async startTask(mode) {
             try {
