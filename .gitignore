@@ -31,3 +31,6 @@ data
 utils/auth_core/
 !utils/auth_core.pyd
 test.py
+
+# 浏览器插件本地解压目录
+plugin/openai-cpa-plugin/

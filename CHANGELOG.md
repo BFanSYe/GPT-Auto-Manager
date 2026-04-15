@@ -1,5 +1,19 @@
 # 变更记录
 
+## 2026-04-16
+
+### 已完成
+
+- 注册流程对齐上游 `v10.1.1`
+- 修复 takeover 场景中 `passwordless/send-otp` 失败判断对象错误，避免发信失败后仍继续走 OAuth / `get_oai_code` 流程
+- 恢复古法浏览器插件模式主控链路（前端模式切换、`/api/ext/*` 接口、运行态统计）
+- 古法启动前先等待 `WORKER_READY` 与节点心跳，避免误判插件节点掉线
+- 增强古法模式对 `create-account` 异常页的自动重试处理
+- 识别 Cloudflare 全页安全验证，并统一归类为 `pwd_blocked`
+- 每轮古法任务成功 / 失败 / 停止后自动清理 OpenAI/Auth 站点数据（cookies、localStorage、indexedDB、cacheStorage、service workers 等）
+- 浏览器插件安装提示修正为“解压 zip 后加载文件夹”，降低 `Service Worker (invalid)` 误用概率
+- 公共发布版本号更新为 `v10.1.1-bfansye-hotfix1`
+
 ## 2026-04-15
 
 ### 已完成
