@@ -3,7 +3,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            appVersion: 'v10.1.0-bfansye-hotfix1',
+            appVersion: 'v10.1.0-bfansye-hotfix3',
             isLoggedIn: !!localStorage.getItem('auth_token'),
             loginPassword: '',
             currentTab: window.location.hash.replace('#', '') || 'console',
@@ -757,6 +757,41 @@ createApp({
             }, "*");
             console.log(`📡 [总控] 身份同步指令已下发: ${localWorkerId}`);
         },
+        requestExtensionReadyProbe() {
+            window.postMessage({ type: "CHECK_EXTENSION_READY" }, "*");
+        },
+        async waitForExtensionReady(timeoutMs = 12000) {
+            const started = Date.now();
+            this.listenToExtension();
+            this.requestExtensionReadyProbe();
+            while (Date.now() - started < timeoutMs) {
+                const localWorkerId = localStorage.getItem('local_worker_id');
+                if (this.isExtConnected && localWorkerId) {
+                    return { ok: true, workerId: localWorkerId };
+                }
+                await new Promise(r => setTimeout(r, 800));
+                this.requestExtensionReadyProbe();
+            }
+            return {
+                ok: false,
+                workerId: localStorage.getItem('local_worker_id') || '',
+            };
+        },
+        async waitForExtensionHeartbeat(workerId, timeoutMs = 12000) {
+            const started = Date.now();
+            while (Date.now() - started < timeoutMs) {
+                try {
+                    const checkRes = await this.authFetch(`/api/ext/check_node?worker_id=${encodeURIComponent(workerId)}`);
+                    const checkData = await checkRes.json();
+                    if (checkData.online) {
+                        return { ok: true, data: checkData };
+                    }
+                } catch (e) {}
+                await new Promise(r => setTimeout(r, 1200));
+                this.syncTokenToExtension();
+            }
+            return { ok: false };
+        },
         listenToExtension() {
             if (this.config?.reg_mode !== 'extension') return;
             if (this._hasExtensionListener) {
@@ -892,19 +927,32 @@ createApp({
                 return;
             }
             this.showToast("📡 正在探测插件节点在线状态...", "info");
+            const extReady = await this.waitForExtensionReady(15000);
+            if (!extReady.ok) {
+                const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+                this.showToast("🚫 启动失败：浏览器插件未连接。", "error");
+                this.logs.push({
+                    parsed: true,
+                    time: timeStr,
+                    level: '系统',
+                    text: '🛑 浏览器页面尚未收到 WORKER_READY。请先解压 plugin/openai-cpa-plugin.zip，并在浏览器扩展页开启开发者模式后加载解压后的文件夹，然后强制刷新当前页面，等待顶部出现“浏览器插件已连接”。',
+                    raw: `[${timeStr}] [系统] 🛑 浏览器页面尚未收到 WORKER_READY。请先解压 plugin/openai-cpa-plugin.zip，并在浏览器扩展页开启开发者模式后加载解压后的文件夹，然后强制刷新当前页面，等待顶部出现“浏览器插件已连接”。`
+                });
+                return;
+            }
+            this.syncTokenToExtension();
             try {
-                const localId = localStorage.getItem('local_worker_id') || 'Node-Pilot-01';
-                const checkRes = await this.authFetch(`/api/ext/check_node?worker_id=${localId}`);
-                const checkData = await checkRes.json();
-                if (!checkData.online) {
+                const localId = extReady.workerId;
+                const heartbeat = await this.waitForExtensionHeartbeat(localId, 12000);
+                if (!heartbeat.ok) {
                     const timeStr = new Date().toLocaleTimeString('zh-CN', { hour12: false });
                     this.showToast(`🚫 启动失败：插件节点 [${localId}] 未连接或已掉线！`, "error");
                     this.logs.push({
                         parsed: true,
                         time: timeStr,
                         level: '系统',
-                        text: '🛑 请确认已安装 plugin/openai-cpa-plugin.zip 浏览器插件，并强制刷新当前页面！',
-                        raw: `[${timeStr}] [系统] 🛑 请确认已安装 plugin/openai-cpa-plugin.zip 浏览器插件，并强制刷新当前页面！`
+                        text: `🛑 浏览器插件已回报 READY，但节点 [${localId}] 心跳未注册成功。请保持页面停留在本站几秒后再试，或重新刷新当前页面。`,
+                        raw: `[${timeStr}] [系统] 🛑 浏览器插件已回报 READY，但节点 [${localId}] 心跳未注册成功。请保持页面停留在本站几秒后再试，或重新刷新当前页面。`
                     });
                     return;
                 }

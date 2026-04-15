@@ -162,7 +162,7 @@
                                 </div>
                                 <div v-if="config.reg_mode === 'extension'" class="text-[11px] font-bold rounded-lg px-3 py-2 border"
                                      :class="isExtConnected ? 'text-emerald-700 bg-emerald-50 border-emerald-200' : 'text-amber-700 bg-amber-50 border-amber-200'">
-                                    {{ isExtConnected ? '✅ 浏览器插件已连接，可直接启动古法模式' : '⚠️ 浏览器插件未连接，请安装 plugin/openai-cpa-plugin.zip 并刷新页面' }}
+                                    {{ isExtConnected ? '✅ 浏览器插件已连接，可直接启动古法模式' : '⚠️ 浏览器插件未连接，请先解压 plugin/openai-cpa-plugin.zip，并在浏览器扩展页开启开发者模式后加载解压后的文件夹，再刷新页面' }}
                                 </div>
                             </div>
                         </div>
