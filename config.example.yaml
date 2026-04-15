@@ -112,11 +112,14 @@ default_proxy: ""
 
 # [HTTP 动态代理池]
 # 适用于 HTTP 动态代理网关（用户名:密码@主机:端口），支持多线程独立通道复用同一条或多条动态代理
+# 如果只填一条动态代理，系统会按 pool_size 复制成多个工作位；
+# 是否换 IP 取决于服务商是否按“新建连接/会话”轮换出口
 http_dynamic_proxy:
   enable: false
   # 动态代理池通道数。通常建议与 reg_threads 保持一致
   pool_size: 3
-  # 支持填写一条或多条代理。若留空则回退使用上面的 default_proxy
+  # 支持填写一条或多条代理。保存时若缺少协议头会自动补全为 http://
+  # 若留空则回退使用上面的 default_proxy；若两者都为空，后端会拒绝保存
   proxy_list:
     - "http://user:pass@gate.example.com:10000"
 

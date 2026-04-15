@@ -99,6 +99,89 @@ def get_web_password():
     return "admin"
 
 
+def _normalize_proxy_input_for_save(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "://" not in text:
+        text = f"http://{text}"
+    return text
+
+
+def _normalize_proxy_input_list_for_save(raw_value) -> list[str]:
+    if isinstance(raw_value, str):
+        raw_items = [line.strip() for line in raw_value.splitlines() if line.strip()]
+    elif isinstance(raw_value, list):
+        raw_items = raw_value
+    else:
+        raw_items = []
+    cleaned = []
+    for item in raw_items:
+        normalized = _normalize_proxy_input_for_save(item)
+        if normalized:
+            cleaned.append(normalized)
+    return cleaned
+
+
+def _build_http_dynamic_proxy_runtime() -> dict:
+    enabled = bool(getattr(cfg, "HTTP_DYNAMIC_PROXY_ENABLE", False))
+    configured_pool_size = int(getattr(cfg, "HTTP_DYNAMIC_PROXY_POOL_SIZE", 0) or 0)
+    source_list = getattr(cfg, "HTTP_DYNAMIC_PROXY_LIST", []) or []
+    default_proxy = str(getattr(cfg, "DEFAULT_PROXY", "") or "").strip()
+    clash_pool_active = bool(getattr(cfg, "_clash_enable", False) and getattr(cfg, "_clash_pool_mode", False))
+
+    queue_items = []
+    try:
+        with cfg.PROXY_QUEUE.mutex:
+            queue_items = list(cfg.PROXY_QUEUE.queue)
+    except Exception:
+        queue_items = []
+
+    actual_queue_channels = len([item for item in queue_items if item])
+    using_default_fallback = enabled and not source_list and bool(default_proxy)
+    invalid_empty = enabled and not source_list and not default_proxy
+    single_source = (len(source_list) == 1) or using_default_fallback
+    queue_owner = "clash" if clash_pool_active else ("http_dynamic" if enabled else "default")
+    loaded_channels = actual_queue_channels if enabled and queue_owner == "http_dynamic" else 0
+    single_source_cloned = enabled and single_source and loaded_channels > 1
+
+    mode = "disabled"
+    message = "HTTP 动态代理池未启用"
+    if enabled:
+        if queue_owner == "clash":
+            mode = "shadowed_by_clash"
+            message = "HTTP 动态代理池已开启，但当前 Clash 独享池优先级更高，动态代理池未进入运行队列"
+        elif invalid_empty:
+            mode = "invalid_empty"
+            message = "已开启，但未填写 proxy_list 且未配置 default_proxy，运行时不会装载任何动态通道"
+        elif using_default_fallback:
+            mode = "fallback_default_proxy"
+            message = "未填写动态代理列表，当前回退使用 default_proxy 构建动态通道队列"
+        elif len(source_list) == 1:
+            mode = "single_source_cloned"
+            message = "单条动态代理已按通道数复制为多个并发工作位，适合按连接/会话轮换出口的网关"
+        elif len(source_list) > 1:
+            mode = "multi_source_round_robin"
+            message = "多条动态代理已按通道数轮询装载到运行队列"
+        else:
+            mode = "unknown"
+            message = "当前运行态已启用，但未识别到明确的动态代理来源"
+
+    return {
+        "enabled": enabled,
+        "queue_owner": queue_owner,
+        "configured_pool_size": configured_pool_size,
+        "source_count": len(source_list),
+        "loaded_channels": loaded_channels,
+        "using_default_fallback": using_default_fallback,
+        "single_source_cloned": single_source_cloned,
+        "mode": mode,
+        "queue_ready": bool(enabled and queue_owner == "http_dynamic" and loaded_channels > 0 and not invalid_empty),
+        "error": "HTTP 动态代理池已开启，但当前没有任何可装载的动态代理通道" if invalid_empty else "",
+        "message": message,
+    }
+
+
 def _read_clash_pool_env() -> dict:
     """读取宿主机 Mihomo 代理池的环境文件。"""
     if not os.path.exists(CLASH_POOL_ENV_PATH):
@@ -943,14 +1026,57 @@ async def get_config(token: str = Depends(verify_token)):
             "refresh_token": "",
             "pool_fission": False
         }
+    config_data["http_dynamic_proxy_runtime"] = _build_http_dynamic_proxy_runtime()
     return config_data
 
 
 @router.post("/api/config")
 async def save_config(new_config: dict, token: str = Depends(verify_token)):
     try:
+        new_config.pop("http_dynamic_proxy_runtime", None)
+        current_config = {}
+        if os.path.exists(CONFIG_PATH):
+            try:
+                with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                    current_config = yaml.safe_load(f) or {}
+            except Exception:
+                current_config = {}
         if isinstance(new_config.get("sub2api_mode"), dict):
             new_config["sub2api_mode"].pop("min_remaining_weekly_percent", None)
+        if "default_proxy" in new_config:
+            new_config["default_proxy"] = _normalize_proxy_input_for_save(new_config.get("default_proxy", ""))
+        http_dynamic_proxy = new_config.get("http_dynamic_proxy")
+        if isinstance(http_dynamic_proxy, dict):
+            try:
+                http_dynamic_proxy["pool_size"] = max(1, int(http_dynamic_proxy.get("pool_size", 1) or 1))
+            except Exception:
+                http_dynamic_proxy["pool_size"] = 1
+            normalized_dynamic_list = _normalize_proxy_input_list_for_save(http_dynamic_proxy.get("proxy_list", []))
+            http_dynamic_proxy["proxy_list"] = normalized_dynamic_list
+            if bool(http_dynamic_proxy.get("enable", False)) and not normalized_dynamic_list and not str(new_config.get("default_proxy", "") or "").strip():
+                return {"status": "error", "message": "HTTP 动态代理池已开启，但动态代理列表为空且全局默认代理也为空，请至少填写一项。"}
+        clash_proxy_pool = new_config.get("clash_proxy_pool")
+        http_dynamic_proxy = new_config.get("http_dynamic_proxy")
+        auto_notes = []
+        if isinstance(clash_proxy_pool, dict) and isinstance(http_dynamic_proxy, dict):
+            old_clash = current_config.get("clash_proxy_pool", {}) if isinstance(current_config.get("clash_proxy_pool", {}), dict) else {}
+            old_http = current_config.get("http_dynamic_proxy", {}) if isinstance(current_config.get("http_dynamic_proxy", {}), dict) else {}
+
+            old_clash_active = bool(old_clash.get("enable", False))
+            new_clash_active = bool(clash_proxy_pool.get("enable", False))
+            old_http_active = bool(old_http.get("enable", False))
+            new_http_active = bool(http_dynamic_proxy.get("enable", False))
+
+            clash_just_enabled = new_clash_active and not old_clash_active
+            http_just_enabled = new_http_active and not old_http_active
+
+            if clash_just_enabled and new_http_active:
+                http_dynamic_proxy["enable"] = False
+                auto_notes.append("已自动关闭 HTTP 动态代理池")
+            elif http_just_enabled and new_clash_active:
+                clash_proxy_pool["enable"] = False
+                auto_notes.append("已自动关闭 Clash 智能切点")
+
         with core_engine.cfg.CONFIG_FILE_LOCK:
             with open(CONFIG_PATH, "w", encoding="utf-8") as f:
                 yaml.dump(new_config, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
@@ -958,7 +1084,10 @@ async def save_config(new_config: dict, token: str = Depends(verify_token)):
             reload_all_configs()
         except Exception:
             pass
-        return {"status": "success", "message": "✅ 配置已成功保存！"}
+        final_message = "✅ 配置已成功保存！"
+        if auto_notes:
+            final_message += "（" + "；".join(auto_notes) + "）"
+        return {"status": "success", "message": final_message}
     except Exception as e:
         return {"status": "error", "message": f"❌ 保存失败: {str(e)}"}
 

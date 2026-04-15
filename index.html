@@ -1550,7 +1550,7 @@
                                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 md:mb-8 border-b border-indigo-100 pb-5 gap-4">
                                     <h3 class="text-xl md:text-2xl font-black text-indigo-700 tracking-tight flex items-center gap-2"><span>🌍</span> Clash 节点智能池</h3>
                                     <label class="relative inline-flex bg-white px-4 py-2.5 md:px-5 md:py-3 rounded-xl cursor-pointer hover:bg-indigo-50 transition-colors shadow-sm border border-indigo-200 w-full sm:w-auto items-center justify-center group">
-                                        <input type="checkbox" v-model="config.clash_proxy_pool.enable" class="sr-only peer">
+                                        <input type="checkbox" v-model="config.clash_proxy_pool.enable" @change="handleClashEnableToggle" class="sr-only peer">
                                         <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-indigo-600 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
                                         <span class="font-black text-indigo-900 text-sm md:text-base ml-3 tracking-wide">开启智能切点</span>
                                     </label>
@@ -1558,9 +1558,13 @@
 
                                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 md:gap-10" :class="{'opacity-50 pointer-events-none grayscale-[50%] transition-opacity duration-300': !config.clash_proxy_pool.enable}">
                                     <div class="space-y-5">
+                                        <div class="text-xs text-indigo-800 font-bold bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-3 leading-relaxed shadow-sm">
+                                            <span class="font-black">互斥说明：</span>
+                                            <code class="font-mono">开启智能切点</code> 与 <code class="font-mono">HTTP 动态代理池</code> 不能同时生效。现在如果你开启智能切点，系统会自动关闭 HTTP 动态代理池；如果你开启 HTTP 动态代理池，系统会自动关闭智能切点。
+                                        </div>
                                         <div class="flex flex-col sm:flex-row gap-4 mb-2">
                                             <label class="relative inline-flex flex-1 text-rose-700 font-bold bg-rose-50/80 p-4 rounded-xl border border-rose-200/60 items-center cursor-pointer shadow-sm hover:bg-rose-100 transition-colors group">
-                                                <input type="checkbox" v-model="config.clash_proxy_pool.pool_mode" class="sr-only peer">
+                                        <input type="checkbox" v-model="config.clash_proxy_pool.pool_mode" class="sr-only peer">
                                                 <div class="relative w-9 h-5 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all after:shadow-sm peer-checked:bg-rose-500 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
                                                 <span class="ml-3 text-sm block tracking-wide">独享池模式</span>
                                             </label>
@@ -1646,7 +1650,7 @@
                                 <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4 border-b border-emerald-100 pb-5">
                                     <h3 class="text-xl md:text-2xl font-black text-emerald-700 tracking-tight flex items-center gap-2"><span>🚪</span> HTTP 动态代理池</h3>
                                     <label class="relative inline-flex bg-white px-4 py-2.5 md:px-5 md:py-3 rounded-xl cursor-pointer hover:bg-emerald-50 transition-colors shadow-sm border border-emerald-200 w-full sm:w-auto items-center justify-center group">
-                                        <input type="checkbox" v-model="config.http_dynamic_proxy.enable" class="sr-only peer">
+                                        <input type="checkbox" v-model="config.http_dynamic_proxy.enable" @change="handleHttpDynamicToggle" class="sr-only peer">
                                         <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-emerald-600 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
                                         <span class="font-black text-emerald-900 text-sm md:text-base ml-3 tracking-wide">开启动态代理池</span>
                                     </label>
@@ -1654,7 +1658,41 @@
 
                                 <div class="space-y-5" :class="{'opacity-50 pointer-events-none grayscale-[50%] transition-opacity duration-300': !config.http_dynamic_proxy.enable}">
                                     <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 leading-relaxed shadow-sm">
-                                        适用于 <code class="font-mono">http://用户名:密码@主机:端口</code> 这类动态代理网关。开启后，多线程会从独立代理队列中取通道；如果你只填一条动态代理，系统会按通道数复制成多个独立工作位，适合“每次连接/请求自动换 IP”的服务商。
+                                        适用于 <code class="font-mono">http://用户名:密码@主机:端口</code> 这类动态代理网关。开启后，多线程会从独立代理队列中取通道；如果你只填一条动态代理，系统会按通道数复制成多个独立工作位，更适合“按新建连接 / 会话自动换 IP”的服务商。
+                                    </div>
+                                    <div class="text-xs text-emerald-800 font-bold bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 leading-relaxed shadow-sm">
+                                        <span class="font-black">互斥说明：</span>
+                                        <code class="font-mono">HTTP 动态代理池</code> 与 <code class="font-mono">开启智能切点</code> 不能同时生效。现在如果你开启 HTTP 动态代理池，系统会自动关闭智能切点；如果你再开启智能切点，系统也会自动关闭 HTTP 动态代理池。
+                                    </div>
+
+                                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4" v-if="config.http_dynamic_proxy_runtime">
+                                        <div class="bg-white border border-emerald-100 rounded-xl px-4 py-4 shadow-sm">
+                                            <label class="block text-[11px] text-emerald-700 font-black mb-2 uppercase tracking-wider">当前运行态已装载通道</label>
+                                            <div class="text-2xl font-black text-slate-800">{{ config.http_dynamic_proxy_runtime.loaded_channels || 0 }}</div>
+                                            <div class="text-[11px] text-slate-400 font-medium mt-2">配置通道数：{{ config.http_dynamic_proxy_runtime.configured_pool_size || config.http_dynamic_proxy.pool_size || 0 }}</div>
+                                        </div>
+                                        <div class="bg-white border border-emerald-100 rounded-xl px-4 py-4 shadow-sm">
+                                            <label class="block text-[11px] text-emerald-700 font-black mb-2 uppercase tracking-wider">当前来源模式</label>
+                                            <div class="text-sm font-black"
+                                                 :class="config.http_dynamic_proxy_runtime.error ? 'text-rose-600' : 'text-slate-800'">
+                                                {{ config.http_dynamic_proxy_runtime.queue_owner === 'clash' ? '当前被 Clash 独享池接管' : (config.http_dynamic_proxy_runtime.using_default_fallback ? '回退 default_proxy' : (config.http_dynamic_proxy_runtime.single_source_cloned ? '单条代理复制通道' : (config.http_dynamic_proxy_runtime.source_count > 1 ? '多条代理轮询装载' : '未装载'))) }}
+                                            </div>
+                                            <div class="text-[11px] text-slate-400 font-medium mt-2">有效源代理数：{{ config.http_dynamic_proxy_runtime.source_count || 0 }}</div>
+                                        </div>
+                                        <div class="bg-white border border-emerald-100 rounded-xl px-4 py-4 shadow-sm">
+                                            <label class="block text-[11px] text-emerald-700 font-black mb-2 uppercase tracking-wider">运行态状态</label>
+                                            <div class="inline-flex px-2.5 py-1 rounded-lg text-[11px] font-black border"
+                                                 :class="config.http_dynamic_proxy_runtime.queue_ready ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'">
+                                                {{ config.http_dynamic_proxy_runtime.queue_ready ? '队列已就绪' : '队列未就绪' }}
+                                            </div>
+                                            <div class="text-[11px] text-slate-400 font-medium mt-2 leading-relaxed">
+                                                {{ config.http_dynamic_proxy_runtime.message || '暂无运行态说明' }}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div v-if="config.http_dynamic_proxy_runtime && config.http_dynamic_proxy_runtime.error" class="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3 font-medium">
+                                        {{ config.http_dynamic_proxy_runtime.error }}
                                     </div>
 
                                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
@@ -1669,7 +1707,7 @@
                                                 <span class="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded shadow-sm border border-slate-200">换行分隔</span>
                                             </label>
                                             <textarea v-model="httpDynamicListStr" class="w-full appearance-none bg-white border border-slate-200 text-slate-700 rounded-xl py-3 px-4 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-colors shadow-inner h-[120px] font-mono text-xs leading-relaxed placeholder:text-slate-300" placeholder="http://customer-xxx:password@gate.example.com:10000&#10;http://customer-yyy:password@gate.example.com:10000"></textarea>
-                                            <span class="block text-[11px] text-slate-400 mt-2 font-medium">留空时自动回退使用上方“全局默认代理”。如果你只提供一条动态代理，项目会复制为多个线程通道。</span>
+                                            <span class="block text-[11px] text-slate-400 mt-2 font-medium">保存时会自动补全缺失的 <code class="font-mono">http://</code>。留空时会回退使用上方“全局默认代理”；如果两者都为空，后端会直接拒绝保存。如果你只提供一条动态代理，项目会复制为多个线程通道，但是否换 IP 取决于代理商是否按连接 / 会话轮换出口。</span>
                                         </div>
                                     </div>
                                 </div>

@@ -591,7 +591,14 @@ def _pool_parallel_limit(requested: int) -> int:
     """根据当前代理池能力收敛并发数，避免线程数大于可用通道数。"""
     requested = max(1, int(requested))
     if getattr(cfg, "HTTP_DYNAMIC_PROXY_ENABLE", False):
-        return max(1, min(requested, int(getattr(cfg, "HTTP_DYNAMIC_PROXY_POOL_SIZE", requested) or requested)))
+        try:
+            qsize = int(cfg.PROXY_QUEUE.qsize())
+            if qsize <= 0:
+                return 0
+            return min(requested, qsize)
+        except Exception:
+            configured = int(getattr(cfg, "HTTP_DYNAMIC_PROXY_POOL_SIZE", requested) or requested)
+            return max(1, min(requested, configured))
     if cfg._clash_enable and cfg._clash_pool_mode:
         try:
             qsize = int(cfg.PROXY_QUEUE.qsize())

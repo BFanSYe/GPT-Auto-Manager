@@ -3,7 +3,7 @@ const { createApp } = Vue;
 createApp({
     data() {
         return {
-            appVersion: 'v10.0.7-bfansye-hotfix3',
+            appVersion: 'v10.0.7-bfansye-hotfix7',
             isLoggedIn: !!localStorage.getItem('auth_token'),
             loginPassword: '',
             currentTab: window.location.hash.replace('#', '') || 'console',
@@ -286,6 +286,20 @@ createApp({
                 if (!this.config.http_dynamic_proxy) {
                     this.config.http_dynamic_proxy = { enable: false, pool_size: 3, proxy_list: [] };
                 }
+                if (!this.config.http_dynamic_proxy_runtime) {
+                    this.config.http_dynamic_proxy_runtime = {
+                        enabled: false,
+                        configured_pool_size: 0,
+                        source_count: 0,
+                        loaded_channels: 0,
+                        using_default_fallback: false,
+                        single_source_cloned: false,
+                        mode: 'disabled',
+                        queue_ready: false,
+                        error: '',
+                        message: ''
+                    };
+                }
                 if (this.config.http_dynamic_proxy.pool_size === undefined) {
                     this.config.http_dynamic_proxy.pool_size = 3;
                 }
@@ -407,6 +421,20 @@ createApp({
             this.config.clash_proxy_pool.group_name = name || '';
             this.showToast(`已填入策略组：${name}`, 'success');
         },
+        handleClashEnableToggle() {
+            if (!this.config || !this.config.clash_proxy_pool) return;
+            if (this.config.clash_proxy_pool.enable && this.config.http_dynamic_proxy?.enable) {
+                this.config.http_dynamic_proxy.enable = false;
+                this.showToast('已自动关闭 HTTP 动态代理池，避免与 Clash 智能切点同时开启', 'warning');
+            }
+        },
+        handleHttpDynamicToggle() {
+            if (!this.config || !this.config.http_dynamic_proxy) return;
+            if (this.config.http_dynamic_proxy.enable && this.config.clash_proxy_pool?.enable) {
+                this.config.clash_proxy_pool.enable = false;
+                this.showToast('已自动关闭 Clash 智能切点，避免与 HTTP 动态代理池同时开启', 'warning');
+            }
+        },
         async saveConfig() {
             try {
                 if(this.config.clash_proxy_pool) {
@@ -423,6 +451,7 @@ createApp({
                 const data = await res.json();
                 if(data.status === 'success') {
                     this.showToast(data.message, "success");
+                    await this.fetchConfig();
                     this.pollStats();
                 } else { this.showToast("保存失败：" + data.message, "error"); }
             } catch (e) { this.showToast("保存失败网络异常", "error"); }

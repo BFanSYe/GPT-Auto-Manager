@@ -122,6 +122,8 @@ DEFAULT_PROXY: str = ""
 # HTTP 动态代理池：用于“动态 HTTP 网关”类型代理服务商。
 # 当 enable=true 时，系统会把 proxy_list 或 default_proxy 装入 PROXY_QUEUE，
 # 由多线程注册逻辑逐个领取通道，而不是走 Clash/Mihomo API 切点。
+# 如果只提供一条动态代理，会按 pool_size 复制成多个并发工作位；
+# 是否换 IP 取决于服务商是否按“新建连接/会话”轮换出口。
 HTTP_DYNAMIC_PROXY_ENABLE: bool = False
 HTTP_DYNAMIC_PROXY_POOL_SIZE: int = 0
 HTTP_DYNAMIC_PROXY_LIST: list = []
@@ -484,7 +486,7 @@ def reload_all_configs():
                 for idx in range(HTTP_DYNAMIC_PROXY_POOL_SIZE):
                     PROXY_QUEUE.put(_dynamic_sources[idx % len(_dynamic_sources)])
         else:
-            PROXY_QUEUE.put(DEFAULT_PROXY if DEFAULT_PROXY else None)
+            print(f"[{ts()}] [ERROR] HTTP 动态代理池已开启，但 proxy_list 与 default_proxy 均为空，当前动态代理池不可用。")
     else:
         PROXY_QUEUE.put(DEFAULT_PROXY if DEFAULT_PROXY else None)
     _luckmail        = _c.get("luckmail", {})
