@@ -1,5 +1,24 @@
 # 变更记录
 
+## 2026-04-16（v10.1.3-bfansye-hotfix1）
+
+### 已完成
+
+- 选择性回补上游 `v10.1.2` / `v10.1.3` 关键改动（非整仓硬合）
+- 强化 `utils/register.py`：
+  - takeover 场景改为 `password_verify`，并统一复用 `login_ctx`
+  - 识别 `Failed to create account` 并归类为 `pwd_blocked`
+  - 创建阶段验证码通过后若直接命中 `/add-phone`，进入 HeroSMS 创建阶段补救
+  - 识别 `identity_provider_mismatch` 并自动切换到 takeover / OAuth OTP 路径
+  - 识别 `been deleted or deactivated` 并归类为 `signup_blocked`
+- 回补微软邮箱 `service abuse mode` 处理：
+  - 自动停用异常邮箱
+  - Graph 轮询遇到 abuse mode 时立即停止
+- 新增 `Sub2API` 测活验证模型配置 `test_model`，并在测活成功后自动启用健康账号
+- 新增 `HeroSMS` 创建阶段接码配置 `verify_on_register` 及前端开关
+- 保留并延续此前的古法插件模式恢复、缓存清理、Cloudflare 归因等增强
+- 公共发布版本号更新为 `v10.1.3-bfansye-hotfix1`
+
 ## 2026-04-16
 
 ### 已完成

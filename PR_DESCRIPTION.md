@@ -4,19 +4,19 @@
 
 本仓库是基于上游 `wenfxl/openai-cpa` 整理出的公开可复用版本，当前基线为：
 
-- 上游版本：`v10.1.1`
-- 当前公开热修版本：`v10.1.1-bfansye-hotfix1`
+- 上游对齐范围：`v10.1.2` / `v10.1.3` 关键改动（非整仓硬合）
+- 当前公开热修版本：`v10.1.3-bfansye-hotfix1`
 
 ## 本次发布重点
 
-- 同步上游 `v10.1.1` 注册流程优化
-- 修复 takeover 场景 `passwordless/send-otp` 失败判断 bug
-- 恢复古法浏览器插件模式主控链路
-- 增强 `create-account` 异常页自动重试
-- 识别 Cloudflare 全页安全验证并归类为 `pwd_blocked`
-- 每轮古法任务结束后自动清理 OpenAI/Auth 站点数据
-- 古法启动前等待 `WORKER_READY` 与节点心跳
-- 修正插件安装提示：必须加载解压后的插件目录
+- 回补上游 `v10.1.2` 的注册主流程强化
+- 修复 takeover 场景 `password_verify` / `login_ctx` 传递链路
+- 新增创建阶段命中 `/add-phone` 时的 HeroSMS 补救逻辑
+- 识别 `identity_provider_mismatch` 并自动转 takeover / OAuth OTP
+- 识别 `been deleted or deactivated` 与 `Failed to create account` 的更细归因
+- 回补上游 `v10.1.3` 的微软邮箱 `service abuse mode` 自动停用逻辑
+- 新增 `Sub2API` 测活验证模型配置 `test_model`
+- 新增 `HeroSMS` 创建阶段接码配置 `verify_on_register`
 
 ## 与上游相比保留/增强的重点
 
@@ -36,9 +36,12 @@
 - 本地微软邮箱库 / Graph 支持
 - Temporam 支持
 - Fvia / Inboxes / TemporaryMail / Tmailor 支持
+- 微软邮箱 `service abuse mode` 自动停用与轮询止损
 
-### 3. 古法插件模式
+### 3. 注册与古法插件模式
 
+- takeover 流程强化
+- 创建阶段 add-phone 补救
 - 古法模式主控链路恢复
 - 插件 ready / heartbeat 等待
 - `create-account` 异常页重试
@@ -50,6 +53,7 @@
 - CPA 自动补货
 - Sub2API 自动补货
 - 独立测活与库存管理
+- Sub2API 测活模型可配置
 
 ### 5. 文档与公开仓库整理
 
@@ -63,4 +67,4 @@
 
 - 默认公开分支：`main`
 - 持续开发分支：`main-bfansye`
-- 发布分支：`release/bfansye-custom-v10.1.1`
+- 发布分支：`release/bfansye-custom-v10.1.3`
