@@ -14,6 +14,13 @@ from utils import config as cfg
 from utils import db_manager
 _fission_lock = threading.Lock()
 
+
+class MailboxAbuseModeError(RuntimeError):
+    def __init__(self, email: str):
+        super().__init__(f"[{cfg.ts()}] [WARNING] Microsoft 邮箱已进入 service abuse mode，已自动停用: {email}")
+        self.email = email
+
+
 class LocalMicrosoftService:
     def __init__(self, proxies: Optional[Dict[str, str]] = None):
         self.proxies = proxies
@@ -127,6 +134,15 @@ class LocalMicrosoftService:
             return data["access_token"]
         else:
             err_msg = data.get('error_description', data)
+            err_text = str(err_msg)
+            if "AADSTS70000" in err_text and "service abuse mode" in err_text.lower():
+                target_email = mailbox.get("master_email") or mailbox.get("email")
+                if target_email:
+                    try:
+                        db_manager.update_local_mailbox_status(target_email, 3)
+                    except:
+                        pass
+                    raise MailboxAbuseModeError(target_email)
             raise RuntimeError(f"[{cfg.ts()}] [ERROR] 双令牌模式尝试均失败: {err_msg}")
 
     def fetch_openai_messages(self, mailbox: dict) -> List[Dict[str, Any]]:
@@ -159,6 +175,9 @@ class LocalMicrosoftService:
                 return all_msgs
             else:
                 print(f"[{cfg.ts()}] [ERROR] 扫信接口请求失败: {resp.status_code} | {resp.text}")
+        except MailboxAbuseModeError as e:
+            mailbox["_polling_stopped"] = "abuse_mode"
+            print(str(e), flush=True)
         except Exception as e:
             print(f"[{cfg.ts()}] [DEBUG-GRAPH] 扫信模块严重错误: {e}", flush=True)
         return all_msgs

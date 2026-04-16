@@ -1475,6 +1475,13 @@
                                             <span class="ml-4 text-sm font-black text-orange-900 tracking-wide">启用号码二次复用机制 <span class="text-xs font-medium text-orange-600/80 block mt-0.5">(省钱模式)</span></span>
                                         </label>
                                     </div>
+                                    <div class="md:col-span-2 flex flex-col sm:flex-row gap-4 mt-2">
+                                        <label class="relative inline-flex flex-1 items-center p-4 bg-rose-50/50 rounded-xl border border-rose-200 shadow-sm cursor-pointer hover:bg-rose-100/50 transition-colors group">
+                                            <input type="checkbox" v-model="config.hero_sms.verify_on_register" class="sr-only peer">
+                                            <div class="relative w-11 h-6 shrink-0 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all after:shadow-sm peer-checked:bg-rose-500 shadow-inner transition-colors duration-300 group-hover:shadow-md"></div>
+                                            <span class="ml-4 text-sm font-black text-rose-900 tracking-wide">账号创建时接码 <span class="text-xs font-medium text-rose-600/80 block mt-0.5">(仅创建环节触发 add-phone 时生效)</span></span>
+                                        </label>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -2193,6 +2200,23 @@
                                         <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-purple-300 transition-colors">
                                             <label class="block text-[11px] text-slate-500 font-black mb-2 uppercase tracking-wider">测活并发数</label>
                                             <input type="number" v-model.number="config.sub2api_mode.threads" class="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-lg py-2.5 px-3 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-colors shadow-sm text-center">
+                                        </div>
+                                        <div class="col-span-2 bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:border-purple-300 transition-colors">
+                                            <label class="block text-[11px] text-slate-500 font-black mb-2 uppercase tracking-wider">Sub2API 测活验证模型</label>
+                                            <div class="relative">
+                                                <select v-model="config.sub2api_mode.test_model" class="w-full appearance-none bg-slate-50 border border-slate-200 text-slate-700 font-bold rounded-lg py-2.5 px-4 focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-colors shadow-sm relative cursor-pointer bg-[url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%2394a3b8%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E')] bg-[length:12px_12px] bg-[right_14px_center] bg-no-repeat pr-10">
+                                                    <option value="GPT-5.4">GPT-5.4</option>
+                                                    <option value="GPT-5.3 Codex">GPT-5.3 Codex</option>
+                                                    <option value="GPT-5.3 Codex Spark">GPT-5.3 Codex Spark</option>
+                                                    <option value="GPT-5.2">GPT-5.2</option>
+                                                    <option value="GPT-5.2 Codex">GPT-5.2 Codex</option>
+                                                    <option value="GPT-5.1 Codex Max">GPT-5.1 Codex Max</option>
+                                                    <option value="GPT-5.1 Codex">GPT-5.1 Codex</option>
+                                                    <option value="GPT-5.1">GPT-5.1</option>
+                                                    <option value="GPT-5.1 Codex Mini">GPT-5.1 Codex Mini</option>
+                                                    <option value="GPT-5">GPT-5</option>
+                                                </select>
+                                            </div>
                                         </div>
 
                                         <div class="col-span-2 bg-purple-50/50 p-5 md:p-6 rounded-2xl border border-purple-200 mt-2 space-y-6 shadow-sm">

@@ -329,6 +329,9 @@ createApp({
                 if (this.config.hero_sms.use_proxy === undefined) {
                     this.config.hero_sms.use_proxy = false;
                 }
+                if (this.config.hero_sms.verify_on_register === undefined) {
+                    this.config.hero_sms.verify_on_register = false;
+                }
 				if (!this.config.sub_domain_level) {
                     this.config.sub_domain_level = 1;
                 }
@@ -352,6 +355,9 @@ createApp({
                 }
                 if (this.config.sub2api_mode.enable_ws_mode === undefined) {
                     this.config.sub2api_mode.enable_ws_mode = true;
+                }
+                if (this.config.sub2api_mode.test_model === undefined) {
+                    this.config.sub2api_mode.test_model = 'GPT-5.2';
                 }
                 if(this.config.clash_proxy_pool && Array.isArray(this.config.clash_proxy_pool.blacklist)) {
                     this.blacklistStr = this.config.clash_proxy_pool.blacklist.join('\n');

@@ -1015,7 +1015,7 @@ def _try_verify_phone_via_hero_sms(
         hint_url: str = "",
 ) -> tuple[bool, str]:
     if not _hero_sms_enabled():
-        return False, "HeroSMS 未配置 API Key 或主开关未开启，如果不接码请忽略该提示"
+        return False, "HeroSMS 未配置 API Key 或HeroSMS主开关未开启，如果不想花钱接码请忽略该条提示"
 
     max_tries = _hero_sms_max_tries()
     last_reason = "HeroSMS 手机验证失败"

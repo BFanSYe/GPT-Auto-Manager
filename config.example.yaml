@@ -243,6 +243,7 @@ sub2api_mode:
   enable_token_revive: false
   check_interval_minutes: 60
   threads: 10
+  test_model: "GPT-5.2"
   account_concurrency: 10
   account_load_factor: 10
   account_priority: 1
@@ -258,6 +259,7 @@ hero_sms:
   service: dr
   use_proxy: false
   auto_pick_country: false
+  verify_on_register: false
   reuse_phone: true
   max_price: 0.08
   min_balance: 1

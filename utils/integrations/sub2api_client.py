@@ -3,7 +3,7 @@ import logging
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Tuple
-
+from utils import config as cfg
 from curl_cffi import requests as cffi_requests
 
 logger = logging.getLogger(__name__)
@@ -310,7 +310,7 @@ class Sub2APIClient:
             response = cffi_requests.post(
                 url,
                 headers=self.headers,
-                json={},
+                json={"model_id": cfg.SUB2API_TEST_MODEL},
                 timeout=60,
                 impersonate="chrome110",
             )
@@ -347,7 +347,7 @@ class Sub2APIClient:
             return "ok", "no terminal SSE event, skipped"
         except Exception as exc:
             logger.warning("Sub2API test_account %s failed: %s", account_id, exc)
-            return "ok", f"test error, skipped: {str(exc)[:120]}"
+            return "ok", f"test error, skipped: {str(exc)}"
 
     def test_connection(self) -> Tuple[bool, str]:
         url = f"{self.api_url}/api/v1/admin/accounts/data"
