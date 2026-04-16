@@ -34,6 +34,33 @@ def normalize_proxy_url(url: str) -> str:
         url = f"http://{url}"
     return format_docker_url(url)
 
+def normalize_sub2api_test_model(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return "gpt-5.2"
+
+    key = raw.lower().replace("_", "-").strip()
+    alias_map = {
+        "gpt-5.4": "gpt-5.4",
+        "gpt-5.4-mini": "gpt-5.4",
+        "gpt-5.3-codex": "gpt-5.3-codex",
+        "gpt-5.3 codex": "gpt-5.3-codex",
+        "gpt-5.3-codex-spark": "gpt-5.3-codex",
+        "gpt-5.3 codex spark": "gpt-5.3-codex",
+        "gpt-5.2": "gpt-5.2",
+        "gpt-5.2-codex": "gpt-5.2",
+        "gpt-5.2 codex": "gpt-5.2",
+        "gpt-5.1": "gpt-5.2",
+        "gpt-5.1-codex": "gpt-5.2",
+        "gpt-5.1 codex": "gpt-5.2",
+        "gpt-5.1-codex-max": "gpt-5.2",
+        "gpt-5.1 codex max": "gpt-5.2",
+        "gpt-5.1-codex-mini": "gpt-5.2",
+        "gpt-5.1 codex mini": "gpt-5.2",
+        "gpt-5": "gpt-5.2",
+    }
+    return alias_map.get(key, "gpt-5.2")
+
 def deep_update_config(default_dict, user_dict):
     """
     递归检查配置文件
@@ -155,7 +182,7 @@ RANDOM_SUB_DOMAIN_LEVEL: bool = False
 ENABLE_SUB2API_MODE: bool = False
 SUB2API_URL: str = ""
 SUB2API_KEY: str = ""
-SUB2API_TEST_MODEL: str = "GPT-5.2"
+SUB2API_TEST_MODEL: str = "gpt-5.2"
 SUB2API_MIN_THRESHOLD: int = 70
 SUB2API_BATCH_COUNT: int = 2
 SUB2API_CHECK_INTERVAL: int = 60
@@ -421,7 +448,7 @@ def reload_all_configs():
     ENABLE_SUB2API_MODE = _sub2api.get("enable", False)
     SUB2API_URL         = format_docker_url(str(_sub2api.get("api_url", "")).strip()).rstrip("/")
     SUB2API_KEY         = _sub2api.get("api_key", "")
-    SUB2API_TEST_MODEL  = str(_sub2api.get("test_model", "GPT-5.2")).strip() or "GPT-5.2"
+    SUB2API_TEST_MODEL  = normalize_sub2api_test_model(_sub2api.get("test_model", "gpt-5.2"))
     SUB2API_MIN_THRESHOLD = _sub2api.get("min_accounts_threshold", 70)
     SUB2API_BATCH_COUNT = _sub2api.get("batch_reg_count", 2)
     SUB2API_CHECK_INTERVAL = _sub2api.get("check_interval_minutes", 60)

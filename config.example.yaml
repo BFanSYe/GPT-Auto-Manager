@@ -243,7 +243,7 @@ sub2api_mode:
   enable_token_revive: false
   check_interval_minutes: 60
   threads: 10
-  test_model: "GPT-5.2"
+  test_model: "gpt-5.2"
   account_concurrency: 10
   account_load_factor: 10
   account_priority: 1

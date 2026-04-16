@@ -338,6 +338,31 @@ createApp({
                 if (!this.config.sub2api_mode) {
                     this.config.sub2api_mode = {};
                 }
+                const normalizeSub2ApiTestModel = (value) => {
+                    const raw = String(value || '').trim();
+                    if (!raw) return 'gpt-5.2';
+                    const key = raw.toLowerCase().replace(/_/g, '-');
+                    const aliasMap = {
+                        'gpt-5.4': 'gpt-5.4',
+                        'gpt-5.4-mini': 'gpt-5.4',
+                        'gpt-5.3-codex': 'gpt-5.3-codex',
+                        'gpt-5.3 codex': 'gpt-5.3-codex',
+                        'gpt-5.3-codex-spark': 'gpt-5.3-codex',
+                        'gpt-5.3 codex spark': 'gpt-5.3-codex',
+                        'gpt-5.2': 'gpt-5.2',
+                        'gpt-5.2-codex': 'gpt-5.2',
+                        'gpt-5.2 codex': 'gpt-5.2',
+                        'gpt-5.1': 'gpt-5.2',
+                        'gpt-5.1-codex': 'gpt-5.2',
+                        'gpt-5.1 codex': 'gpt-5.2',
+                        'gpt-5.1-codex-max': 'gpt-5.2',
+                        'gpt-5.1 codex max': 'gpt-5.2',
+                        'gpt-5.1-codex-mini': 'gpt-5.2',
+                        'gpt-5.1 codex mini': 'gpt-5.2',
+                        'gpt-5': 'gpt-5.2',
+                    };
+                    return aliasMap[key] || 'gpt-5.2';
+                };
                 if (this.config.sub2api_mode.account_concurrency === undefined) {
                     this.config.sub2api_mode.account_concurrency = 10;
                 }
@@ -356,9 +381,7 @@ createApp({
                 if (this.config.sub2api_mode.enable_ws_mode === undefined) {
                     this.config.sub2api_mode.enable_ws_mode = true;
                 }
-                if (this.config.sub2api_mode.test_model === undefined) {
-                    this.config.sub2api_mode.test_model = 'GPT-5.2';
-                }
+                this.config.sub2api_mode.test_model = normalizeSub2ApiTestModel(this.config.sub2api_mode.test_model);
                 if(this.config.clash_proxy_pool && Array.isArray(this.config.clash_proxy_pool.blacklist)) {
                     this.blacklistStr = this.config.clash_proxy_pool.blacklist.join('\n');
                 }
