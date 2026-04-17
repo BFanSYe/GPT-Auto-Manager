@@ -120,9 +120,9 @@ def get_web_password():
 
 
 def _resolve_update_repo_dir() -> str:
-    candidates = []
     if HOST_PROJECT_PATH:
-        candidates.append(HOST_PROJECT_PATH)
+        return HOST_PROJECT_PATH
+    candidates = []
     candidates.append(BASE_DIR)
     for path in candidates:
         if path and os.path.isdir(path) and os.path.isdir(os.path.join(path, ".git")):
