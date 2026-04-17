@@ -40,7 +40,6 @@ CLASH_POOL_ENV_PATH = os.path.join(CLASH_POOL_ROOT, "pool.env")
 CLASH_POOL_UPDATE_SCRIPT = os.path.join(CLASH_POOL_ROOT, "update_pool.sh")
 CLASH_POOL_STATUS_SCRIPT = os.path.join(CLASH_POOL_ROOT, "status_pool.sh")
 UPDATE_RELEASE_REPO = os.getenv("UPDATE_RELEASE_REPO", "BFanSYe/GPT-Auto-Manager").strip()
-AUTO_UPDATE_HELPER_IMAGE = os.getenv("AUTO_UPDATE_HELPER_IMAGE", "gpt-auto-manager:latest").strip()
 HOST_PROJECT_PATH = os.getenv("HOST_PROJECT_PATH", "").strip()
 
 class DummyArgs:
@@ -130,7 +129,20 @@ def _resolve_update_repo_dir() -> str:
     return ""
 
 
+def _ensure_git_safe_directory(repo_dir: str) -> None:
+    try:
+        subprocess.run(
+            ["git", "config", "--global", "--add", "safe.directory", repo_dir],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+    except Exception:
+        pass
+
+
 def _resolve_update_remote(repo_dir: str) -> str:
+    _ensure_git_safe_directory(repo_dir)
     for remote in ("userrepo", "origin"):
         try:
             subprocess.check_output(["git", "-C", repo_dir, "remote", "get-url", remote], text=True)
@@ -141,6 +153,7 @@ def _resolve_update_remote(repo_dir: str) -> str:
 
 
 def _resolve_update_branch(repo_dir: str) -> str:
+    _ensure_git_safe_directory(repo_dir)
     try:
         branch = subprocess.check_output(
             ["git", "-C", repo_dir, "rev-parse", "--abbrev-ref", "HEAD"], text=True
@@ -1847,31 +1860,25 @@ async def auto_update_system(req: AutoUpdateReq, token: str = Depends(verify_tok
 
     remote = _resolve_update_remote(repo_dir)
     branch = (req.branch or _resolve_update_branch(repo_dir)).strip() or "main"
-    helper_image = AUTO_UPDATE_HELPER_IMAGE or "gpt-auto-manager:latest"
-    helper_name = f"gpt-auto-updater-{int(time.time())}"
-    helper_cmd = (
-        "sh -lc "
-        + shlex.quote(
-            f"HOST_PROJECT_PATH={shlex.quote(repo_dir)} "
-            f"UPDATE_REMOTE={shlex.quote(remote)} "
-            f"UPDATE_BRANCH={shlex.quote(branch)} "
-            f"AUTO_UPDATE_LOG_FILE={shlex.quote(os.path.join(repo_dir, 'data', 'auto_update.log'))} "
-            "scripts/auto_update.sh"
-        )
-    )
 
     try:
-        subprocess.run(["docker", "rm", "-f", helper_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        env = os.environ.copy()
+        env["HOST_PROJECT_PATH"] = repo_dir
+        env["PWD"] = repo_dir
+        env["UPDATE_REMOTE"] = remote
+        env["UPDATE_BRANCH"] = branch
+        env["AUTO_UPDATE_LOG_FILE"] = os.path.join(repo_dir, "data", "auto_update.log")
         subprocess.Popen([
-            "docker", "run", "--rm", "-d",
-            "--name", helper_name,
-            "-v", "/var/run/docker.sock:/var/run/docker.sock",
-            "-v", f"{repo_dir}:{repo_dir}",
-            "-w", repo_dir,
-            helper_image,
+            "docker-compose", "run", "-d", "--rm",
+            "-e", f"HOST_PROJECT_PATH={repo_dir}",
+            "-e", f"PWD={repo_dir}",
+            "-e", f"UPDATE_REMOTE={remote}",
+            "-e", f"UPDATE_BRANCH={branch}",
+            "-e", f"AUTO_UPDATE_LOG_FILE={os.path.join(repo_dir, 'data', 'auto_update.log')}",
+            "gpt-auto-manager",
             "sh", "-lc",
-            f"HOST_PROJECT_PATH={shlex.quote(repo_dir)} UPDATE_REMOTE={shlex.quote(remote)} UPDATE_BRANCH={shlex.quote(branch)} AUTO_UPDATE_LOG_FILE={shlex.quote(os.path.join(repo_dir, 'data', 'auto_update.log'))} scripts/auto_update.sh"
-        ])
+            "scripts/auto_update.sh",
+        ], cwd=repo_dir, env=env)
         log_history.append(f"[{core_engine.ts()}] [系统] 🚀 已启动一键自动更新任务：remote={remote} branch={branch}")
         return {"status": "success", "message": f"已开始一键自动更新：{remote}/{branch}。页面可能会短暂断开，请稍后刷新。"}
     except Exception as e:

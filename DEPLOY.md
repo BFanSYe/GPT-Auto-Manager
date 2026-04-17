@@ -48,6 +48,7 @@ http://127.0.0.1:18000
 - 自动根据 `config.example.yaml` 生成 `data/config.yaml`
 - 默认 Web 密码为 `admin`
 - 默认启用“跟随本仓库 GitHub Release 的更新提醒”和“一键自动更新”所需环境：
+  - `${PWD}:${PWD}`（把源码目录挂进容器）
   - `HOST_PROJECT_PATH=${PWD}`
   - `/var/run/docker.sock:/var/run/docker.sock`
 
