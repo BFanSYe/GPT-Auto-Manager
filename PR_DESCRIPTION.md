@@ -4,8 +4,8 @@
 
 本仓库是基于上游 `wenfxl/openai-cpa` 整理出的公开可复用版本，当前基线为：
 
-- 上游对齐范围：`v10.1.2` / `v10.1.3` 关键改动（非整仓硬合）
-- 当前公开热修版本：`v10.1.3-bfansye-hotfix2`
+- 上游对齐范围：`v10.1.5` 关键注册/邮箱改动（未接入上游 Clash 部署管理）
+- 当前公开热修版本：`v10.1.5-bfansye-hotfix1`
 
 ## 本次发布重点
 
@@ -17,6 +17,7 @@
 - 回补上游 `v10.1.3` 的微软邮箱 `service abuse mode` 自动停用逻辑
 - 新增 `Sub2API` 测活验证模型配置 `test_model`
 - 新增 `HeroSMS` 创建阶段接码配置 `verify_on_register`
+- 回补上游 `v10.1.5` 的注册主流程优化与邮箱脱敏日志改进
 - 修复 `Sub2API` 测活模型配置值大小写不规范问题，并兼容旧配置
 
 ## 与上游相比保留/增强的重点
@@ -68,4 +69,4 @@
 
 - 默认公开分支：`main`
 - 持续开发分支：`main-bfansye`
-- 发布分支：`release/bfansye-custom-v10.1.3`
+- 发布分支：`release/bfansye-custom-v10.1.5`

@@ -112,8 +112,19 @@ def mask_email(text: str, force_mask: bool = False) -> str:
     if not text:
         return ""
     if "@" in text:
-        prefix, _ = text.split("@", 1)
-        return f"{prefix}@***.***"
+        try:
+            user_part, _ = text.split("@", 1)
+            if "+" in user_part:
+                main_acc, alias_suffix = user_part.split("+", 1)
+                m_keep = 2 if len(main_acc) > 2 else 1
+                masked_main = main_acc[:m_keep] + "***"
+                a_keep = 2 if len(alias_suffix) > 2 else 1
+                masked_alias = alias_suffix[:a_keep] + "***"
+                return f"{masked_main}+{masked_alias}@***.***"
+            u_keep = 2 if len(user_part) > 2 else 1
+            return f"{user_part[:u_keep]}***@***.***"
+        except Exception:
+            return "******@***.***"
 
     domain_match = re.match(r"^([a-zA-Z0-9.-]+\.[a-zA-Z]{2,}|\d{1,3}(?:\.\d{1,3}){3})(:\d+)?$", text)
     if domain_match:
@@ -669,7 +680,7 @@ def _poll_local_ms_for_oai_code_graph(ms_service, target_email: str, mailbox_dic
             return ""
         if not messages:
             if attempt % 2 == 0:
-                print(f"[{cfg.ts()}] [INFO] 第 {attempt + 1} 次轮询: 未发现任何邮件", flush=True)
+                print(f"[{cfg.ts()}] [INFO] {mask_email(tgt)} 第 {attempt + 1} 次轮询: 未发现任何邮件", flush=True)
         else:
             for msg in messages:
                 msg_id = msg.get('id')

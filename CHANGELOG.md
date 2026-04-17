@@ -1,5 +1,18 @@
 # 变更记录
 
+## 2026-04-17（v10.1.5-bfansye-hotfix1）
+
+### 已完成
+
+- 选择性回补上游 `v10.1.5` 的关键注册与邮箱更新（未接入上游 `v10.1.4` 的 Clash 部署管理）
+- 更新 `utils/register.py` 到上游最新主流程，并保留已验证的本地定制逻辑
+- 创建阶段若命中 `/add-phone`，在进入 HeroSMS 之前新增一次重试注册流程的机会，提高成功率
+- takeover / OAuth OTP 链路保持兼容，并补充部分 `about-you` 场景下的账号资料补全
+- 优化 `mail_service.mask_email`，更友好地显示带别名邮箱的脱敏信息
+- Graph 轮询日志增加目标邮箱显示，便于排查取码过程
+- 保留并延续 `Sub2API test_model` 小写化兼容修复
+- 公共发布版本号更新为 `v10.1.5-bfansye-hotfix1`
+
 ## 2026-04-16（v10.1.3-bfansye-hotfix2）
 
 ### 已完成
