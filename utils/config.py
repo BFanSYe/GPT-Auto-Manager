@@ -183,6 +183,7 @@ ENABLE_SUB2API_MODE: bool = False
 SUB2API_URL: str = ""
 SUB2API_KEY: str = ""
 SUB2API_TEST_MODEL: str = "gpt-5.2"
+SUB2API_DEFAULT_PROXY: str = ""
 SUB2API_MIN_THRESHOLD: int = 70
 SUB2API_BATCH_COUNT: int = 2
 SUB2API_CHECK_INTERVAL: int = 60
@@ -235,6 +236,7 @@ HERO_SMS_POLL_TIMEOUT_SEC: int = 120
 NORMAL_SLEEP_MIN: int = 5
 NORMAL_SLEEP_MAX: int = 30
 NORMAL_TARGET_COUNT: int = 0
+MAX_LOG_LINES: int = 500
 
 _clash_enable: bool = False
 _clash_pool_mode: bool = False
@@ -276,7 +278,7 @@ def reload_all_configs():
     global NORMAL_SLEEP_MIN, NORMAL_SLEEP_MAX, NORMAL_TARGET_COUNT
     global _clash_enable, _clash_pool_mode, WARP_PROXY_LIST, PROXY_QUEUE
     global ENABLE_SUB2API_MODE, SUB2API_URL, SUB2API_KEY
-    global SUB2API_MIN_THRESHOLD, SUB2API_BATCH_COUNT, SUB2API_CHECK_INTERVAL, SUB2API_THREADS, SUB2API_TEST_MODEL
+    global SUB2API_MIN_THRESHOLD, SUB2API_BATCH_COUNT, SUB2API_CHECK_INTERVAL, SUB2API_THREADS, SUB2API_TEST_MODEL, SUB2API_DEFAULT_PROXY
     global SUB2API_SAVE_TO_LOCAL
     global SUB2API_REMOVE_ON_LIMIT_REACHED, SUB2API_REMOVE_DEAD_ACCOUNTS, SUB2API_ENABLE_TOKEN_REVIVE
     global SUB2API_ACCOUNT_CONCURRENCY, SUB2API_ACCOUNT_LOAD_FACTOR, SUB2API_ACCOUNT_PRIORITY
@@ -288,6 +290,7 @@ def reload_all_configs():
     global HERO_SMS_MIN_BALANCE, HERO_SMS_MAX_TRIES, HERO_SMS_POLL_TIMEOUT_SEC
     global AI_API_BASE, AI_API_KEY, AI_MODEL, AI_ENABLE_PROFILE
     global CPA_AUTO_CHECK, SUB2API_AUTO_CHECK
+    global MAX_LOG_LINES
     global TG_BOT
     global TEMPORAM_COOKIE
     global REG_MODE
@@ -449,6 +452,7 @@ def reload_all_configs():
     SUB2API_URL         = format_docker_url(str(_sub2api.get("api_url", "")).strip()).rstrip("/")
     SUB2API_KEY         = _sub2api.get("api_key", "")
     SUB2API_TEST_MODEL  = normalize_sub2api_test_model(_sub2api.get("test_model", "gpt-5.2"))
+    SUB2API_DEFAULT_PROXY = normalize_proxy_url(_sub2api.get("default_proxy", ""))
     SUB2API_MIN_THRESHOLD = _sub2api.get("min_accounts_threshold", 70)
     SUB2API_BATCH_COUNT = _sub2api.get("batch_reg_count", 2)
     SUB2API_CHECK_INTERVAL = _sub2api.get("check_interval_minutes", 60)
@@ -469,6 +473,7 @@ def reload_all_configs():
     NORMAL_SLEEP_MIN = _normal.get("sleep_min", 5)
     NORMAL_SLEEP_MAX = _normal.get("sleep_max", 30)
     NORMAL_TARGET_COUNT = _normal.get("target_count", 0)
+    MAX_LOG_LINES = safe_int(_c.get("max_log_lines", 500), 500, minimum=50)
 
     # 自定义动态 HTTP 代理池配置。若只填一条代理，系统会按 pool_size 复制成多个工作位。
     _http_dynamic_proxy = _c.get("http_dynamic_proxy", {})

@@ -25,7 +25,7 @@ from utils.integrations.sub2api_client import Sub2APIClient
 from utils.integrations.tg_notifier import send_tg_msg_async
 from utils.email_providers.gmail_oauth_handler import GmailOAuthHandler
 
-from global_state import VALID_TOKENS, CLUSTER_NODES, NODE_COMMANDS, cluster_lock, log_history, engine, verify_token, worker_status
+from global_state import VALID_TOKENS, CLUSTER_NODES, NODE_COMMANDS, cluster_lock, log_history, append_log, engine, verify_token, worker_status
 import utils.config as cfg
 
 router = APIRouter()
@@ -163,6 +163,36 @@ def _resolve_update_branch(repo_dir: str) -> str:
     except Exception:
         pass
     return "main"
+
+def parse_sub2api_proxy(proxy_url: str):
+    """提取代理URL为 Sub2API 所需格式"""
+    if not proxy_url:
+        return None
+    try:
+        parsed = urllib.parse.urlparse(proxy_url)
+        protocol = parsed.scheme
+        host = parsed.hostname
+        port = parsed.port
+        username = parsed.username or ""
+        password = parsed.password or ""
+        if not protocol or not host or not port:
+            return None
+
+        proxy_key = f"{protocol}|{host}|{port}|{username}|{password}"
+        proxy_dict = {
+            "proxy_key": proxy_key,
+            "name": "openai-cpa",
+            "protocol": protocol,
+            "host": host,
+            "port": port,
+            "status": "active"
+        }
+        if username and password:
+            proxy_dict["username"] = username
+            proxy_dict["password"] = password
+        return proxy_dict
+    except Exception:
+        return None
 
 
 def _normalize_proxy_input_for_save(value: str) -> str:
@@ -1586,6 +1616,9 @@ def account_action(data: dict, token: str = Depends(verify_token)):
         elif action == "push_sub2api":
             if not getattr(core_engine.cfg, 'ENABLE_SUB2API_MODE', False): return {"status": "error",
                                                                                    "message": "🚫 推送失败：未开启 Sub2API 模式！"}
+            proxy_obj = parse_sub2api_proxy(getattr(core_engine.cfg, 'SUB2API_DEFAULT_PROXY', ''))
+            if proxy_obj:
+                token_data["sub2api_proxy"] = proxy_obj
             client = Sub2APIClient(api_url=getattr(core_engine.cfg, 'SUB2API_URL', ''),
                                    api_key=getattr(core_engine.cfg, 'SUB2API_KEY', ''))
             success, resp = client.add_account(token_data)
@@ -1603,9 +1636,10 @@ async def export_sub2api_accounts(req: ExportReq, token: str = Depends(verify_to
         if not tokens: return {"status": "error", "message": "未提取到Token"}
 
         sub2api_settings = getattr(core_engine.cfg, '_c', {}).get("sub2api_mode", {})
+        proxy_obj = parse_sub2api_proxy(getattr(core_engine.cfg, 'SUB2API_DEFAULT_PROXY', ''))
         accounts_list = []
         for td in tokens:
-            accounts_list.append({
+            acc = {
                 "name": str(td.get("email", "unknown"))[:64],
                 "platform": "openai", "type": "oauth",
                 "credentials": {"refresh_token": td.get("refresh_token", "")},
@@ -1613,9 +1647,12 @@ async def export_sub2api_accounts(req: ExportReq, token: str = Depends(verify_to
                 "priority": int(sub2api_settings.get("account_priority", 1)),
                 "rate_multiplier": float(sub2api_settings.get("account_rate_multiplier", 1.0)),
                 "extra": {"load_factor": int(sub2api_settings.get("account_load_factor", 10))}
-            })
+            }
+            if proxy_obj:
+                acc["proxy_key"] = proxy_obj["proxy_key"]
+            accounts_list.append(acc)
         return {"status": "success",
-                "data": {"exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "proxies": [],
+                "data": {"exported_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "proxies": [proxy_obj] if proxy_obj else [],
                          "accounts": accounts_list}}
     except Exception as e:
         return {"status": "error", "message": str(e)}
@@ -2025,7 +2062,7 @@ def cluster_upload_accounts(req: ClusterUploadAccountsReq):
     msg = f"[{core_engine.ts()}] [系统] 📦 成功从子控 [{req.node_name}] 提取并完美入库 {success_count} 个账号！"
     print(msg)
     try:
-        log_history.append(msg)
+        append_log(msg)
     except:
         pass
     return {"status": "success", "message": f"成功接收 {success_count} 个账号"}

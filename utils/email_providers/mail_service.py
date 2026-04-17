@@ -48,6 +48,7 @@ class ProxyIMAP4_SSL(imaplib.IMAP4_SSL):
 luckmail_lock = threading.Lock()
 
 _CM_TOKEN_CACHE: Optional[str] = None
+MS_SNAPSHOT_STORAGE = {}
 
 _thread_data = threading.local()
 _orig_sleep = time.sleep
@@ -659,17 +660,13 @@ def _create_imap_conn(proxy_str=None):
     return imaplib.IMAP4_SSL(cfg.IMAP_SERVER, cfg.IMAP_PORT, timeout=15)
 
 
-def _poll_local_ms_for_oai_code_graph(ms_service, target_email: str, mailbox_dict: dict, max_attempts: int) -> str:
-    from datetime import datetime
-    import time
-
-    assigned_at = float(mailbox_dict.get("assigned_at") or time.time())
+def _poll_local_ms_for_oai_code_graph(ms_service, target_email: str, mailbox_dict: dict, max_attempts: int,
+                                      excluded_ids: set = None) -> str:
+    excluded_ids = excluded_ids or set()
     tgt = target_email.lower().strip()
-    master_email = tgt.split('+')[0] + '@' + tgt.split('@')[1] if '+' in tgt else tgt
-
     processed_msg_ids = set()
 
-    print(f"[{cfg.ts()}] [INFO] 进入 Graph 轮询器，靶向目标: {mask_email(tgt)}", flush=True)
+    print(f"[{cfg.ts()}] [INFO] 靶向轮询器启动 | 目标: {mask_email(tgt)} | 已屏蔽历史邮件: {len(excluded_ids)}", flush=True)
 
     for attempt in range(max_attempts):
         if getattr(cfg, 'GLOBAL_STOP', False):
@@ -678,47 +675,44 @@ def _poll_local_ms_for_oai_code_graph(ms_service, target_email: str, mailbox_dic
         messages = ms_service.fetch_openai_messages(mailbox_dict)
         if mailbox_dict.get("_polling_stopped") == "abuse_mode":
             return ""
-        if not messages:
-            if attempt % 2 == 0:
-                print(f"[{cfg.ts()}] [INFO] {mask_email(tgt)} 第 {attempt + 1} 次轮询: 未发现任何邮件", flush=True)
-        else:
+        if messages:
             for msg in messages:
                 msg_id = msg.get('id')
-                if msg_id in processed_msg_ids:
-                    continue
-                raw_date = msg.get('receivedDateTime', '').replace('Z', '+00:00')
-                try:
-                    received_ts = datetime.fromisoformat(raw_date).timestamp()
-                    if received_ts < assigned_at - 60:
-                        continue
-                except Exception:
+                if msg_id in excluded_ids or msg_id in processed_msg_ids:
                     continue
                 sender = str(msg.get('from', {}).get('emailAddress', {}).get('address', '')).lower()
                 if "openai.com" not in sender:
                     continue
-                subject = msg.get('subject', '').lower()
-                if not any(k in subject for k in ["code", "verify", "chatgpt", "openai"]):
-                    continue
-
                 recipients = [str(r.get('emailAddress', {}).get('address', '')).lower().strip()
                               for r in msg.get('toRecipients', [])]
                 body_content = msg.get('body', {}).get('content', '')
+                subject = msg.get('subject', '').lower()
 
                 is_hit = (tgt in recipients) or (f"to: {tgt}" in body_content.lower()) or (tgt in body_content.lower())
-
-                if not is_hit and master_email in recipients and (time.time() - received_ts < 30):
-                    is_hit = True
 
                 if is_hit:
                     code = _extract_otp_code(f"{subject}\n{body_content}")
                     if code:
-                        print(f"\n[{cfg.ts()}] [SUCCESS] 🎯 成功捕获专属验证码: {code} -> {mask_email(tgt)}", flush=True)
+                        print(f"\n[{cfg.ts()}] [SUCCESS] 🎯 捕获专属验证码: {code} -> {mask_email(tgt)}", flush=True)
                         return code
 
                 processed_msg_ids.add(msg_id)
 
-        time.sleep(5)
+        time.sleep(2)
     return ""
+
+
+def record_ms_snapshot(email: str, jwt: str, proxies: Any = None):
+    try:
+        from utils.email_providers.local_microsoft_service import LocalMicrosoftService
+        parsed_jwt = json.loads(jwt or "{}")
+        mbox = parsed_jwt if isinstance(parsed_jwt, dict) else {}
+        mbox["email"] = email
+        ms = LocalMicrosoftService(proxies=proxies)
+        snapshot = ms.get_snapshot_ids(mbox, email)
+        MS_SNAPSHOT_STORAGE[email.lower()] = snapshot
+    except Exception:
+        pass
 
 
 def get_oai_code(
@@ -765,14 +759,15 @@ def get_oai_code(
 
         if local_ms_account:
             local_ms_account["email"] = str(local_ms_account.get("email") or email).strip()
-            local_ms_account["assigned_at"] = time.time() - 30
             from utils.email_providers.local_microsoft_service import LocalMicrosoftService
             ms_service = LocalMicrosoftService(proxies=mail_proxies)
+            excluded = MS_SNAPSHOT_STORAGE.pop(email.lower(), set())
             return _poll_local_ms_for_oai_code_graph(
                 ms_service=ms_service,
                 target_email=email,
                 mailbox_dict=local_ms_account,
-                max_attempts=max_attempts
+                max_attempts=max_attempts,
+                excluded_ids=excluded
             )
         else:
             print(f"\n[{cfg.ts()}] [ERROR] 缺少微软邮箱凭据，无法收信。")

@@ -244,6 +244,7 @@ sub2api_mode:
   check_interval_minutes: 60
   threads: 10
   test_model: "gpt-5.2"
+  default_proxy: ""
   account_concurrency: 10
   account_load_factor: 10
   account_priority: 1
@@ -306,6 +307,7 @@ web_password: admin
 cf_api_email: 
 #CF KEY
 cf_api_key:
+max_log_lines: "500"
 
 #集群总控
 cluster_node_name: "NODE-1"

@@ -381,7 +381,13 @@ createApp({
                 if (this.config.sub2api_mode.enable_ws_mode === undefined) {
                     this.config.sub2api_mode.enable_ws_mode = true;
                 }
+                if (this.config.sub2api_mode.default_proxy === undefined) {
+                    this.config.sub2api_mode.default_proxy = '';
+                }
                 this.config.sub2api_mode.test_model = normalizeSub2ApiTestModel(this.config.sub2api_mode.test_model);
+                if (!this.config.max_log_lines) {
+                    this.config.max_log_lines = 500;
+                }
                 if(this.config.clash_proxy_pool && Array.isArray(this.config.clash_proxy_pool.blacklist)) {
                     this.blacklistStr = this.config.clash_proxy_pool.blacklist.join('\n');
                 }
@@ -1159,8 +1165,9 @@ createApp({
                     this.logs.push(...this.logBuffer);
                     this.logBuffer = [];
 
-                    if (this.logs.length > 500) {
-                        this.logs.splice(0, this.logs.length - 500);
+                    const maxLines = (this.config && this.config.max_log_lines) ? this.config.max_log_lines : 500;
+                    if (this.logs.length > maxLines) {
+                        this.logs.splice(0, this.logs.length - maxLines);
                     }
                     this.$nextTick(() => {
                         if (container && (isScrolledToBottom || this.logs.length < 20)) {

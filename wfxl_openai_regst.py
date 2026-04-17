@@ -20,7 +20,7 @@ from contextlib import asynccontextmanager
 from utils import core_engine, db_manager
 from utils.config import reload_all_configs
 
-from global_state import engine, log_history
+from global_state import engine, log_history, append_log
 from routers import api_routes
 
 @asynccontextmanager
@@ -80,7 +80,7 @@ def _worker_push_thread():
             try:
                 while not core_engine.log_queue.empty():
                     msg = core_engine.log_queue.get_nowait()
-                    log_history.append(msg)
+                    append_log(msg)
             except: pass
 
             cf_dict = getattr(core_engine.cfg, '_c', {})
@@ -110,7 +110,7 @@ def _worker_push_thread():
                             try:
                                 while not core_engine.log_queue.empty():
                                     msg = core_engine.log_queue.get_nowait()
-                                    log_history.append(msg)
+                                    append_log(msg)
                             except: pass
 
                             s = core_engine.run_stats

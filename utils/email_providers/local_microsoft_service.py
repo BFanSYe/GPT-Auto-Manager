@@ -182,7 +182,7 @@ class LocalMicrosoftService:
             print(f"[{cfg.ts()}] [DEBUG-GRAPH] 扫信模块严重错误: {e}", flush=True)
         return all_msgs
 
-    def _fetch_via_imap(self, mailbox: dict) -> List[Dict[str, Any]]:
+    def _fetch_via_imap(self, mailbox: dict, headers_only: bool = False) -> List[Dict[str, Any]]:
         all_msgs = []
         login_email = mailbox.get("master_email") or mailbox.get("email")
         target_email = mailbox.get("email").lower()
@@ -215,12 +215,15 @@ class LocalMicrosoftService:
                 status, _ = imap.select(folder, readonly=True)
                 if status != 'OK': continue
 
-                _, search_data = imap.search(None, "ALL")
+                status, search_data = imap.search(None, 'FROM', '"openai.com"')
+                if status != 'OK' or not search_data[0]:
+                    continue
                 uids = search_data[0].split()
                 if not uids: continue
 
                 for uid in reversed(uids[-10:]):
-                    _, raw = imap.fetch(uid, "(RFC822)")
+                    fetch_query = "(RFC822.HEADER)" if headers_only else "(RFC822)"
+                    _, raw = imap.fetch(uid, fetch_query)
                     if not raw or not raw[0]: continue
 
                     msg = email_lib.message_from_bytes(raw[0][1])
@@ -239,15 +242,16 @@ class LocalMicrosoftService:
                                 subject_raw or "无主题")
 
                     body = ""
-                    if msg.is_multipart():
-                        for part in msg.walk():
-                            if part.get_content_type() == "text/html":
-                                body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8",
-                                                                            errors="replace")
-                                break
-                    else:
-                        body = msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8",
-                                                                   errors="replace")
+                    if not headers_only:
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                if part.get_content_type() == "text/html":
+                                    body = part.get_payload(decode=True).decode(part.get_content_charset() or "utf-8",
+                                                                                errors="replace")
+                                    break
+                        else:
+                            body = msg.get_payload(decode=True).decode(msg.get_content_charset() or "utf-8",
+                                                                       errors="replace")
 
                     all_msgs.append({
                         "id": f"imap_{uid.decode()}",
@@ -263,3 +267,45 @@ class LocalMicrosoftService:
             pass
 
         return all_msgs
+
+    def get_snapshot_ids(self, mailbox: dict, target_email: str) -> set:
+        snapshot = set()
+        tgt = target_email.lower().strip()
+        from utils.email_providers.mail_service import mask_email
+        print(f"[{cfg.ts()}] [INFO] 🛰️ 正在为目标 {mask_email(tgt)} 执行历史邮件封存...")
+
+        try:
+            access_token = self._exchange_refresh_token(mailbox)
+            current_type = mailbox.get('token_type', 'unknown')
+
+            if current_type == 'graph_full':
+                url = f"{self.graph_base_url}/messages"
+                params = {
+                    "$select": "id,toRecipients,subject",
+                    "$filter": "contains(from/emailAddress/address, 'openai.com')",
+                    "$top": 15
+                }
+                headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+
+                resp = cffi_requests.get(url, params=params, headers=headers, proxies=self.proxies, timeout=10,
+                                         impersonate="chrome110")
+
+                if resp.status_code == 200:
+                    raw_value = resp.json().get("value", [])
+                    for m in raw_value:
+                        recs = [r.get('emailAddress', {}).get('address', '').lower() for r in m.get('toRecipients', [])]
+                        if tgt in recs:
+                            snapshot.add(m.get('id'))
+                else:
+                    current_type = 'outlook_legacy'
+
+            if current_type in ['outlook_legacy', 'legacy_imap']:
+                messages = self._fetch_via_imap(mailbox, headers_only=True)
+                for m in messages:
+                    recs = [r.get('emailAddress', {}).get('address', '').lower() for r in m.get('toRecipients', [])]
+                    if tgt in recs:
+                        snapshot.add(m.get('id'))
+        except Exception as e:
+            print(f"[{cfg.ts()}] [DEBUG] 💥 发生严重错误: {str(e)}")
+
+        return snapshot
