@@ -1,5 +1,22 @@
 # 变更记录
 
+## 2026-04-18（v11.0.0-bfansye-hotfix1）
+
+### 已完成
+
+- 选择性回补上游 `v11.0.0` 高价值改动（未接入上游 Clash 部署管理 / 云端数据库整套）
+- 强化 `utils/register.py`：
+  - 创建阶段命中 `/add-phone` 时，先重试一次注册流程再决定是否进入 HeroSMS
+  - 保留并兼容此前已验证通过的 `password_verify` / `login_ctx` / takeover / HeroSMS 路径
+  - 补充部分 `about-you` 场景下的账号资料补全逻辑
+- 回补微软邮箱旧验证码 / 401 缓解逻辑：
+  - 本地微软邮箱支持历史邮件快照封存
+  - Graph / IMAP 轮询时优先屏蔽旧邮件，降低拿到旧验证码概率
+- 新增 `Sub2API` 专属代理配置 `default_proxy`，推送时可附带代理信息
+- 新增 `max_log_lines` 终端日志上限配置，避免低配机器因为日志过多导致卡顿
+- 保留并延续此前的 `Sub2API test_model` 小写化兼容修复、自动更新能力与工作流文档
+- 公共发布版本号更新为 `v11.0.0-bfansye-hotfix1`
+
 ## 2026-04-17（v10.1.5-bfansye-hotfix1）
 
 ### 已完成
