@@ -155,6 +155,9 @@ cd GPT-Auto-Manager
 docker compose up -d --build
 ```
 
+> 默认 `docker-compose.yml` 已包含一键自动更新所需的 `HOST_PROJECT_PATH` 与 `docker.sock` 配置；
+> 当你的 GitHub Release 发布新版本后，面板会按你的仓库版本提醒，并支持一键自动更新。
+
 ### 5.3 访问面板
 
 默认访问地址：

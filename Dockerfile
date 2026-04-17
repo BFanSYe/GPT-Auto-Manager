@@ -5,7 +5,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    git \
     docker.io \
+    docker-compose \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

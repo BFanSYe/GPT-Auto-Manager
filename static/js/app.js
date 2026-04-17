@@ -1560,8 +1560,9 @@ createApp({
                         this.updateInfo = {
                             hasUpdate: true,
                             version: data.remote_version,
-                            url: data.html_url || data.download_url || 'https://github.com/wenfxl/openai-cpa/releases/latest',
-                            changelog: data.changelog
+                            url: data.html_url || data.download_url || 'https://github.com/BFanSYe/GPT-Auto-Manager/releases/latest',
+                            changelog: data.changelog,
+                            supportsAutoUpdate: !!data.supports_auto_update
                         };
                         if (isManual) {
                             this.promptUpdate();
@@ -1578,9 +1579,33 @@ createApp({
         },
         async promptUpdate() {
             if (!this.updateInfo.hasUpdate) return;
-            const msg = `🚀 发现新版本: ${this.updateInfo.version}\n\n📝 更新内容:\n${this.updateInfo.changelog}\n\n是否前往 GitHub 查看并下载更新？`;
+            const msg = this.updateInfo.supportsAutoUpdate
+                ? `🚀 发现新版本: ${this.updateInfo.version}\n\n📝 更新内容:\n${this.updateInfo.changelog}\n\n是否立即一键自动更新？`
+                : `🚀 发现新版本: ${this.updateInfo.version}\n\n📝 更新内容:\n${this.updateInfo.changelog}\n\n当前环境不支持一键自动更新，是否前往 GitHub 查看并下载更新？`;
             const confirmed = await this.customConfirm(msg);
             if (confirmed) {
+                if (this.updateInfo.supportsAutoUpdate) {
+                    await this.performAutoUpdate();
+                } else {
+                    window.open(this.updateInfo.url, '_blank');
+                }
+            }
+        },
+        async performAutoUpdate() {
+            try {
+                const res = await this.authFetch('/api/system/auto_update', {
+                    method: 'POST',
+                    body: JSON.stringify({})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    this.showToast(data.message || '已开始自动更新', 'success');
+                } else {
+                    this.showToast(data.message || '自动更新失败，已为你打开 GitHub 发布页', 'error');
+                    window.open(this.updateInfo.url, '_blank');
+                }
+            } catch (e) {
+                this.showToast('自动更新请求失败，已为你打开 GitHub 发布页', 'error');
                 window.open(this.updateInfo.url, '_blank');
             }
         },

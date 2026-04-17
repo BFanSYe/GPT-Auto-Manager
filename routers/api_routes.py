@@ -39,6 +39,9 @@ CLASH_POOL_ROOT = "/opt/mihomo-pool"
 CLASH_POOL_ENV_PATH = os.path.join(CLASH_POOL_ROOT, "pool.env")
 CLASH_POOL_UPDATE_SCRIPT = os.path.join(CLASH_POOL_ROOT, "update_pool.sh")
 CLASH_POOL_STATUS_SCRIPT = os.path.join(CLASH_POOL_ROOT, "status_pool.sh")
+UPDATE_RELEASE_REPO = os.getenv("UPDATE_RELEASE_REPO", "BFanSYe/GPT-Auto-Manager").strip()
+AUTO_UPDATE_HELPER_IMAGE = os.getenv("AUTO_UPDATE_HELPER_IMAGE", "gpt-auto-manager:latest").strip()
+HOST_PROJECT_PATH = os.getenv("HOST_PROJECT_PATH", "").strip()
 
 class DummyArgs:
     def __init__(self, proxy=None, once=False):
@@ -85,6 +88,10 @@ class ClusterControlReq(BaseModel): node_name: str; action: str
 class ClashPoolUpdateReq(BaseModel): sub_url: str
 
 
+class AutoUpdateReq(BaseModel):
+    branch: Optional[str] = None
+
+
 class ExtResultReq(BaseModel):
     status: str
     task_id: Optional[str] = ""
@@ -110,6 +117,39 @@ def get_web_password():
     except Exception:
         pass
     return "admin"
+
+
+def _resolve_update_repo_dir() -> str:
+    candidates = []
+    if HOST_PROJECT_PATH:
+        candidates.append(HOST_PROJECT_PATH)
+    candidates.append(BASE_DIR)
+    for path in candidates:
+        if path and os.path.isdir(path) and os.path.isdir(os.path.join(path, ".git")):
+            return path
+    return ""
+
+
+def _resolve_update_remote(repo_dir: str) -> str:
+    for remote in ("userrepo", "origin"):
+        try:
+            subprocess.check_output(["git", "-C", repo_dir, "remote", "get-url", remote], text=True)
+            return remote
+        except Exception:
+            continue
+    return "origin"
+
+
+def _resolve_update_branch(repo_dir: str) -> str:
+    try:
+        branch = subprocess.check_output(
+            ["git", "-C", repo_dir, "rev-parse", "--abbrev-ref", "HEAD"], text=True
+        ).strip()
+        if branch and branch != "HEAD":
+            return branch
+    except Exception:
+        pass
+    return "main"
 
 
 def _normalize_proxy_input_for_save(value: str) -> str:
@@ -1773,7 +1813,7 @@ def get_sub2api_groups(token: str = Depends(verify_token)):
 async def check_update(current_version: str, token: str = Depends(verify_token)):
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.get("https://api.github.com/repos/wenfxl/openai-cpa/releases/latest",
+            resp = await client.get(f"https://api.github.com/repos/{UPDATE_RELEASE_REPO}/releases/latest",
                                     headers={"Accept": "application/vnd.github.v3+json"})
             if resp.status_code != 200: return {"status": "error",
                                                 "message": f"无法获取更新数据 (GitHub API 返回 HTTP {resp.status_code})"}
@@ -1786,11 +1826,56 @@ async def check_update(current_version: str, token: str = Depends(verify_token))
         has_update = _parse(remote_version) > _parse(current_version) if remote_version else False
         assets = data.get("assets")
         download_url = assets[0].get("browser_download_url", "") if assets else data.get("zipball_url", "")
+        repo_dir = _resolve_update_repo_dir()
         return {"status": "success", "has_update": has_update, "remote_version": remote_version,
                 "changelog": data.get("body", "无更新日志"), "download_url": download_url,
-                "html_url": data.get("html_url", "")}
+                "html_url": data.get("html_url", ""), "supports_auto_update": bool(repo_dir and os.path.exists("/var/run/docker.sock"))}
     except Exception as e:
         return {"status": "error", "message": f"检查更新发生未知异常: {str(e)}"}
+
+
+@router.post("/api/system/auto_update")
+async def auto_update_system(req: AutoUpdateReq, token: str = Depends(verify_token)):
+    if engine.is_running():
+        engine.stop()
+
+    repo_dir = _resolve_update_repo_dir()
+    if not repo_dir:
+        return {"status": "error", "message": "未找到可更新的源码目录。请使用仓库源码部署，或在 Docker 部署中设置 HOST_PROJECT_PATH。"}
+    if not os.path.exists("/var/run/docker.sock"):
+        return {"status": "error", "message": "未检测到 Docker Socket，当前部署无法执行一键自动更新。"}
+
+    remote = _resolve_update_remote(repo_dir)
+    branch = (req.branch or _resolve_update_branch(repo_dir)).strip() or "main"
+    helper_image = AUTO_UPDATE_HELPER_IMAGE or "gpt-auto-manager:latest"
+    helper_name = f"gpt-auto-updater-{int(time.time())}"
+    helper_cmd = (
+        "sh -lc "
+        + shlex.quote(
+            f"HOST_PROJECT_PATH={shlex.quote(repo_dir)} "
+            f"UPDATE_REMOTE={shlex.quote(remote)} "
+            f"UPDATE_BRANCH={shlex.quote(branch)} "
+            f"AUTO_UPDATE_LOG_FILE={shlex.quote(os.path.join(repo_dir, 'data', 'auto_update.log'))} "
+            "scripts/auto_update.sh"
+        )
+    )
+
+    try:
+        subprocess.run(["docker", "rm", "-f", helper_name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.Popen([
+            "docker", "run", "--rm", "-d",
+            "--name", helper_name,
+            "-v", "/var/run/docker.sock:/var/run/docker.sock",
+            "-v", f"{repo_dir}:{repo_dir}",
+            "-w", repo_dir,
+            helper_image,
+            "sh", "-lc",
+            f"HOST_PROJECT_PATH={shlex.quote(repo_dir)} UPDATE_REMOTE={shlex.quote(remote)} UPDATE_BRANCH={shlex.quote(branch)} AUTO_UPDATE_LOG_FILE={shlex.quote(os.path.join(repo_dir, 'data', 'auto_update.log'))} scripts/auto_update.sh"
+        ])
+        log_history.append(f"[{core_engine.ts()}] [系统] 🚀 已启动一键自动更新任务：remote={remote} branch={branch}")
+        return {"status": "success", "message": f"已开始一键自动更新：{remote}/{branch}。页面可能会短暂断开，请稍后刷新。"}
+    except Exception as e:
+        return {"status": "error", "message": f"无法启动自动更新任务: {e}"}
 
 @router.post("/api/logs/clear")
 async def clear_backend_logs(token: str = Depends(verify_token)):
